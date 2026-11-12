@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project MD</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar" data-tauri-drag-region>
+        <div id="tabs"></div>
+        <button id="add-files" class="btn" title="Open Markdown files (⌘O)">Add files</button>
+        <div class="spacer" data-tauri-drag-region></div>
+        <div id="search-wrap">
+          <input id="search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" />
+          <button id="search-clear" title="Clear search" hidden>×</button>
+        </div>
+      </header>
+      <main id="board" hidden></main>
+      <div id="empty">
+        <p>Open a Markdown file to see it as a board.</p>
+        <div class="empty-actions">
+          <button id="empty-open" class="btn">Open file…</button>
+          <button id="empty-new" class="btn">New board…</button>
+        </div>
+        <p class="hint">## heading = list · ### heading = card · keys 1–6 = color</p>
+      </div>
+    </div>
+    <div id="modal-backdrop" hidden>
+      <div id="modal" role="dialog" aria-modal="true">
+        <input id="m-title" type="text" placeholder="Card title" spellcheck="false" />
+        <textarea id="m-body" placeholder="Notes…" spellcheck="false"></textarea>
+        <div id="m-foot">
+          <div id="m-colors"></div>
+          <span class="hint">Esc to close</span>
+          <button id="m-delete" class="btn danger">Delete card</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
