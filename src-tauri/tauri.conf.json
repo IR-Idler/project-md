@@ -30,6 +30,7 @@
     "targets": ["app", "dmg"],
     "category": "Productivity",
     "macOS": { "signingIdentity": "-", "minimumSystemVersion": "11.0" },
+    "iOS": { "developmentTeam": "PYSRU834C2" },
     "fileAssociations": [
       { "ext": ["md", "markdown"], "name": "Markdown Document", "role": "Editor", "rank": "Alternate" }
     ],
