@@ -177,6 +177,31 @@ const mTitle = $<HTMLInputElement>("#m-title");
 const mBody = $<HTMLTextAreaElement>("#m-body");
 const mColors = $("#m-colors");
 const mUrgency = $("#m-urgency");
+const mMirror = $("#m-mirror");
+
+/** Redraw the layer over the notes field: same text, checklist markers as boxes. */
+function syncMirror() {
+  const frag = document.createDocumentFragment();
+  const lines = mBody.value.split("\n");
+  lines.forEach((line, i) => {
+    const m = line.match(/^(\s*)([-*+] \[([ xX])\])( ?)(.*)$/);
+    if (m) {
+      const done = m[3] !== " ";
+      const box = el("span", "cb" + (done ? " on" : ""));
+      box.textContent = m[2];
+      const rest = el("span", done ? "cb-done" : "");
+      rest.textContent = m[5];
+      frag.append(m[1], box, m[4], rest);
+    } else {
+      frag.append(line);
+    }
+    if (i < lines.length - 1) frag.append("\n");
+  });
+  // A trailing newline needs something after it to take up a line.
+  frag.append("\u200b");
+  mMirror.replaceChildren(frag);
+  mMirror.scrollTop = mBody.scrollTop;
+}
 
 const isApple = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -422,6 +447,7 @@ async function reloadFromDisk(t: Tab) {
       if (!m.dirty) {
         mTitle.value = target.title;
         mBody.value = target.body;
+        syncMirror();
         renderSwatches();
         renderUrgency();
       }
@@ -895,6 +921,7 @@ function openModal(tab: Tab, card: Card, before = serialize(tab.board), isNew = 
   };
   mTitle.value = card.title;
   mBody.value = card.body;
+  syncMirror();
   renderSwatches();
   renderUrgency();
   backdrop.hidden = false;
@@ -946,6 +973,7 @@ mTitle.addEventListener("input", () => {
 });
 mBody.addEventListener("input", () => {
   if (!modal) return;
+  syncMirror();
   modal.dirty = true;
   modal.card.body = mBody.value;
   scheduleSave(modal.tab, 500);
@@ -975,6 +1003,24 @@ mBody.addEventListener("keydown", (e) => {
   } else {
     insertText("\n" + m[1] + m[2] + " " + (m[3] ? "[ ] " : ""));
   }
+});
+mBody.addEventListener("scroll", () => {
+  mMirror.scrollTop = mBody.scrollTop;
+});
+// Clicking a checklist box ticks it: the click puts the caret inside the
+// "- [ ]" marker, which is otherwise never a useful place to type.
+mBody.addEventListener("click", () => {
+  if (mBody.selectionStart !== mBody.selectionEnd) return;
+  const l = currentLine();
+  const m = l.text.match(CHECK_RE);
+  if (!m) return;
+  const marker = l.start + m[1].length;
+  if (l.pos < marker || l.pos > marker + 5) return;
+  mBody.setSelectionRange(marker + 3, marker + 4);
+  insertText(m[2] === " " ? "x" : " ");
+  const end = mBody.value.indexOf("\n", marker);
+  const at = end < 0 ? mBody.value.length : end;
+  mBody.setSelectionRange(at, at);
 });
 // Keep the caret in the notes when the button is pressed.
 $("#m-check").addEventListener("pointerdown", (e) => e.preventDefault());

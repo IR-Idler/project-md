@@ -33,15 +33,19 @@
     <div id="modal-backdrop" hidden>
       <div id="modal" role="dialog" aria-modal="true">
         <input id="m-title" type="text" placeholder="Card title" spellcheck="false" />
-        <textarea id="m-body" placeholder="Notes…" spellcheck="false"></textarea>
+        <div id="m-edit">
+          <textarea id="m-body" placeholder="Notes…" spellcheck="false" autocapitalize="sentences"></textarea>
+          <div id="m-mirror" aria-hidden="true"></div>
+        </div>
         <div id="m-foot">
           <div id="m-colors"></div>
+          <span class="foot-sep"></span>
           <div id="m-urgency"></div>
-          <button id="m-check" class="btn" title="Add a checklist item (⌘L)">☐ Checklist</button>
+          <span class="foot-sep"></span>
+          <button id="m-check" class="quiet" title="Add a checklist item (⌘L)">+ Checklist</button>
           <span class="foot-space"></span>
-          <span class="hint esc-hint">Esc to close</span>
-          <button id="m-delete" class="btn danger">Delete</button>
-          <button id="m-done" class="btn">Done</button>
+          <button id="m-delete" class="quiet danger" title="Delete this card">Delete</button>
+          <button id="m-done" class="btn primary" title="Save and close (Esc)">Done</button>
         </div>
       </div>
     </div>

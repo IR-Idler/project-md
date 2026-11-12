@@ -579,33 +579,124 @@ body.dragging * {
   font-weight: 700;
   outline: none;
 }
-#m-body {
+/* The notes field is a plain textarea with its text made invisible; an
+   identical layer on top draws the same text, with checklist markers shown
+   as boxes. Typing, selection and the caret all stay native. */
+#m-edit {
   flex: 1;
+  min-height: 0;
+  position: relative;
+}
+#m-body,
+#m-mirror {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 14px 18px;
   border: 0;
+  font: inherit;
+  line-height: 1.6;
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+}
+#m-body {
   background: transparent;
   resize: none;
   outline: none;
-  line-height: 1.6;
+  overflow-y: auto;
+  scrollbar-width: none;
+  color: var(--text);
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text);
 }
+#m-body::-webkit-scrollbar {
+  display: none;
+}
+#m-body::placeholder {
+  -webkit-text-fill-color: var(--muted);
+  opacity: 0.7;
+}
+#m-mirror {
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text);
+}
+.cb {
+  position: relative;
+  -webkit-text-fill-color: transparent;
+}
+.cb::before {
+  content: "";
+  position: absolute;
+  left: calc(4.5ch - 14px);
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -8px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+  background: var(--card);
+}
+.cb.on::before {
+  content: "✓";
+  border-color: var(--c3);
+  background: var(--c3);
+  -webkit-text-fill-color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 11px;
+  text-align: center;
+}
+.cb-done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
 #m-foot {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-top: 1px solid var(--line);
-}
-#m-foot {
-  flex-wrap: wrap;
+  background: var(--bg);
 }
 #m-colors {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
 }
+.foot-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+}
+.foot-space {
+  flex: 1;
+}
+/* urgency: one segmented control */
 #m-urgency {
   display: flex;
-  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--card);
+}
+#m-urgency .urg {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  min-width: 32px;
+}
+#m-urgency .urg:last-child {
+  border-right: 0;
 }
 .urg {
   min-width: 26px;
@@ -622,22 +713,45 @@ body.dragging * {
   background: var(--c0);
   color: #fff;
 }
-.foot-space {
-  flex: 1;
+.quiet {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+}
+.quiet:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+.quiet.danger:hover {
+  background: color-mix(in srgb, var(--c0) 12%, transparent);
+  color: var(--c0);
+}
+.btn.primary {
+  border-color: var(--sel);
+  background: var(--sel);
+  color: var(--bg);
+  padding: 0 16px;
+}
+.btn.primary:hover {
+  opacity: 0.88;
 }
 .swatch {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  border: 2px solid transparent;
+  border: 0;
   border-radius: 50%;
 }
 .swatch.on {
-  border-color: var(--text);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .swatch.none {
-  background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%), var(--card);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: linear-gradient(135deg, transparent 44%, var(--muted) 44% 56%, transparent 56%), var(--card);
+  box-shadow: inset 0 0 0 1px var(--muted);
 }
 .swatch.c0 { background: var(--c0); }
 .swatch.c1 { background: var(--c1); }
@@ -828,25 +942,23 @@ mark {
   }
   #m-title,
   #m-body,
+  #m-mirror,
   .col-input {
     font-size: 16px;
   }
-  .esc-hint {
-    display: none;
-  }
   .swatch {
-    width: 24px;
-    height: 24px;
-  }
-  #m-colors {
-    gap: 6px;
+    width: 22px;
+    height: 22px;
   }
   #m-foot {
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 10px;
+    padding: 10px;
   }
-  #m-foot .btn {
+  .foot-sep {
+    display: none;
+  }
+  #m-foot .btn,
+  #m-foot .quiet {
     height: 32px;
-    padding: 0 10px;
   }
 }
