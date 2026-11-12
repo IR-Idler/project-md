@@ -1,0 +1,61 @@
+# Builds the Mac app and attaches it to a GitHub Release.
+#
+# To publish a new version:
+#   1. bump "version" in src-tauri/tauri.conf.json (and package.json)
+#   2. git tag v0.2.0 && git push origin v0.2.0
+#
+# The download is always named Project-MD-macOS.dmg, so the website's
+# ".../releases/latest/download/Project-MD-macOS.dmg" link stays valid.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # One .dmg that runs on both Apple silicon and Intel Macs.
+      - run: npx tauri build --target universal-apple-darwin --bundles dmg
+
+      - name: Rename the download
+        run: |
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          cp "$dmg" Project-MD-macOS.dmg
+
+      - name: Publish the release
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "Project MD ${TAG#v}" --generate-notes
+          gh release upload "$TAG" Project-MD-macOS.dmg --clobber
