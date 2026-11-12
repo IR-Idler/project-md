@@ -29,6 +29,7 @@
     "active": true,
     "targets": ["app", "dmg"],
     "category": "Productivity",
+    "macOS": { "signingIdentity": "-", "minimumSystemVersion": "11.0" },
     "fileAssociations": [
       { "ext": ["md", "markdown"], "name": "Markdown Document", "role": "Editor", "rank": "Alternate" }
     ],

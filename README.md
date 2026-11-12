@@ -1,6 +1,28 @@
 # Project MD
 
-A minimal Kanban board where every board is a plain Markdown file.
+A super lightweight Kanban board for one-person teams. Every board is a plain
+Markdown file, so your boards work on any device and in any editor.
+
+**Website:** https://ir-idler.github.io/project-md/
+
+## Download
+
+| Platform | |
+| --- | --- |
+| **macOS** (Apple silicon & Intel) | [Download Project-MD-macOS.dmg](https://github.com/IR-Idler/project-md/releases/latest/download/Project-MD-macOS.dmg) · [all releases](https://github.com/IR-Idler/project-md/releases) |
+| **iPhone & iPad** | TestFlight coming soon |
+| **Windows** | Coming later |
+
+**First launch on a Mac:** the app isn't notarized by Apple yet. Open the `.dmg`,
+drag Project MD to Applications, then if macOS blocks it go to
+*System Settings → Privacy & Security* and click *Open Anyway*. If macOS says the
+app is damaged, run this once in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Project MD.app"
+```
+
+## Board format
 
 ```
 ## List name            -> a column
@@ -46,3 +68,15 @@ npm run tauri build    # build src-tauri/target/release/bundle/macos/Project MD.
 ```
 
 Needs Node and Rust (`rustup`). Stack: Tauri 2 (Rust) + TypeScript/Vite, no framework.
+
+## Release
+
+Bump `version` in `src-tauri/tauri.conf.json` and `package.json`, then push a tag:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+GitHub Actions ([release.yml](.github/workflows/release.yml)) builds a universal
+macOS `.dmg` and attaches it to the release as `Project-MD-macOS.dmg`.
+The website lives in [`docs/`](docs/) and is served by GitHub Pages from `main`.
