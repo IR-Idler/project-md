@@ -1,7 +1,23 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { isNative, onFileChanged, onOpenRequest, readFile, unwatchFile, watchFile, writeFile } from "./backend";
-import { Board, Card, COLOR_NAMES, hasStructuralHeading, List, parse, serialize, uid } from "./parser";
+import { highlight, renderNotes } from "./markdown";
+import { isNative, onFileChanged, onMenu, onOpenRequest, readFile, unwatchFile, watchFile, writeFile } from "./backend";
+import {
+  Board,
+  Card,
+  CHECK_RE,
+  checklistProgress,
+  COLORS,
+  COLOR_NAMES,
+  hasStructuralHeading,
+  List,
+  parse,
+  serialize,
+  toggleCheck,
+  uid,
+} from "./parser";
 import "./styles.css";
 
 // ---------------------------------------------------------------- state
@@ -17,7 +33,16 @@ type Tab = {
   pendingReload: boolean;
 };
 
-type ModalState = { tab: Tab; card: Card; before: string; isNew: boolean; wasOpen: boolean };
+type ModalState = {
+  tab: Tab;
+  card: Card;
+  before: string;
+  isNew: boolean;
+  wasOpen: boolean;
+  key: string; // identifies the card in the file (see cardKey)
+  listTitle: string;
+  dirty: boolean; // edited here since it was opened / last merged
+};
 
 const SESSION_KEY = "projectmd.session";
 const MD_EXT = /\.(md|markdown|txt)$/i;
@@ -40,13 +65,85 @@ try {
   expanded = {};
 }
 
+/**
+ * A stable name for a card across re-reads of the file: its title, plus "#n"
+ * for the n-th further card with the same title.
+ */
+function cardKey(t: Tab, c: Card) {
+  let n = 0;
+  for (const l of t.board.lists) {
+    for (const x of l.cards) {
+      if (x === c) return n ? `${c.title}#${n}` : c.title;
+      if (x.title === c.title) n++;
+    }
+  }
+  return c.title;
+}
+
+function findByKey(b: Board, key: string): Card | null {
+  const seen = new Map<string, number>();
+  for (const l of b.lists) {
+    for (const c of l.cards) {
+      const n = seen.get(c.title) ?? 0;
+      seen.set(c.title, n + 1);
+      if ((n ? `${c.title}#${n}` : c.title) === key) return c;
+    }
+  }
+  return null;
+}
+
+// Collapsed lists (view state): file path -> list titles.
+const FOLDED_KEY = "projectmd.folded";
+let folded: Record<string, string[]> = {};
+try {
+  folded = JSON.parse(localStorage.getItem(FOLDED_KEY) || "{}") || {};
+} catch {
+  folded = {};
+}
+const isFolded = (t: Tab, l: List) => (folded[t.path] ?? []).includes(l.title);
+function toggleFold(t: Tab, l: List) {
+  const set = new Set(folded[t.path] ?? []);
+  set.has(l.title) ? set.delete(l.title) : set.add(l.title);
+  if (set.size) folded[t.path] = [...set];
+  else delete folded[t.path];
+  try {
+    localStorage.setItem(FOLDED_KEY, JSON.stringify(folded));
+  } catch {
+    /* view state only */
+  }
+  render();
+}
+
+// Board zoom (view state).
+const ZOOM_KEY = "projectmd.zoom";
+let zoom = 1;
+function setZoom(z: number) {
+  zoom = Math.min(1.6, Math.max(0.7, Math.round(z * 10) / 10));
+  document.documentElement.style.setProperty("--z", String(zoom));
+  try {
+    localStorage.setItem(ZOOM_KEY, String(zoom));
+  } catch {
+    /* view state only */
+  }
+}
+try {
+  setZoom(parseFloat(localStorage.getItem(ZOOM_KEY) || "1") || 1);
+} catch {
+  setZoom(1);
+}
+
+// Filter: show only cards with these colors and at least this urgency.
+const filterColors = new Set<number>();
+let filterUrgency = 0;
+const filtering = () => !!query || filterColors.size > 0 || filterUrgency > 0;
+
 function isExpanded(t: Tab, c: Card) {
-  return !!c.body.trim() && (expanded[t.path] ?? []).includes(c.title);
+  return !!c.body.trim() && (expanded[t.path] ?? []).includes(cardKey(t, c));
 }
 
 function setExpanded(t: Tab, cards: Card[], open: boolean) {
   const set = new Set(expanded[t.path] ?? []);
-  for (const c of cards) open ? set.add(c.title) : set.delete(c.title);
+  for (const c of cards) open ? set.add(cardKey(t, c)) : set.delete(cardKey(t, c));
   if (set.size) expanded[t.path] = [...set];
   else delete expanded[t.path];
   try {
@@ -79,6 +176,19 @@ const backdrop = $("#modal-backdrop");
 const mTitle = $<HTMLInputElement>("#m-title");
 const mBody = $<HTMLTextAreaElement>("#m-body");
 const mColors = $("#m-colors");
+const mUrgency = $("#m-urgency");
+
+const isApple = /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+/** Urgency shortcut: Ctrl+0-3 on Apple devices, Alt+0-3 elsewhere (Ctrl is the command key there). */
+function urgencyDigit(e: KeyboardEvent): number | null {
+  // Shift+0-3 also works (outside text fields): macOS can reserve Ctrl+digits
+  // for switching desktops, in which case the app never sees them.
+  const shift = e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !inInput();
+  const held = shift || (isApple ? e.ctrlKey && !e.metaKey : e.altKey && !e.ctrlKey);
+  const m = held ? e.code.match(/^Digit([0-3])$/) : null;
+  return m ? +m[1] : null;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = ""): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -109,7 +219,10 @@ function findCard(b: Board, id: string | null) {
 const findList = (b: Board, id: string) => b.lists.find((l) => l.id === id);
 
 function matches(c: Card) {
-  return !query || (c.title + "\n" + c.body).toLowerCase().includes(query);
+  if (query && !(c.title + "\n" + c.body).toLowerCase().includes(query)) return false;
+  if (filterColors.size && (c.color == null || !filterColors.has(c.color))) return false;
+  if (filterUrgency && c.urgency < filterUrgency) return false;
+  return true;
 }
 
 function persist() {
@@ -270,11 +383,8 @@ async function newBoard() {
 }
 
 async function reloadFromDisk(t: Tab) {
-  if (modal && modal.tab === t) {
-    t.pendingReload = true;
-    return;
-  }
-  if (saveTimers.has(t)) return; // our own change is about to be written
+  const editing = () => (modal && modal.tab === t ? modal : null);
+  if (!editing() && saveTimers.has(t)) return; // our own change is about to be written
   let text: string;
   try {
     text = await readFile(t.path);
@@ -282,6 +392,44 @@ async function reloadFromDisk(t: Tab) {
     return; // file missing for a moment (being replaced / synced)
   }
   if (text === t.lastText) return;
+  const m = editing();
+  if (m) {
+    // The file changed elsewhere while a card is open here. Take the new file
+    // and carry only this card's edits over, so neither side is lost.
+    const next = parse(text);
+    const mine = m.card;
+    let target = findByKey(next, m.key);
+    if (target && m.dirty) {
+      Object.assign(target, { title: mine.title, color: mine.color, urgency: mine.urgency, body: mine.body });
+    } else if (!target && (m.dirty || m.isNew)) {
+      const l = next.lists.find((l) => l.title === m.listTitle) ?? next.lists[0];
+      if (!l) return;
+      target = { ...mine, id: uid() };
+      l.cards.push(target);
+    }
+    pushUndo(t, serialize(t.board));
+    t.board = next;
+    t.lastText = text;
+    if (!target) {
+      // The card was removed elsewhere and nothing was edited here.
+      modal = null;
+      backdrop.hidden = true;
+      selected = null;
+    } else {
+      m.card = target;
+      m.key = cardKey(t, target);
+      selected = target.id;
+      if (!m.dirty) {
+        mTitle.value = target.title;
+        mBody.value = target.body;
+        renderSwatches();
+        renderUrgency();
+      }
+      scheduleSave(t, 300);
+    }
+    if (t === cur()) render();
+    return;
+  }
   pushUndo(t, serialize(t.board));
   t.lastText = text;
   if (t === cur()) {
@@ -327,13 +475,48 @@ function renderTabs() {
         e.stopPropagation();
         closeTab(i);
       });
-      d.addEventListener("mousedown", (e) => {
-        if (e.button === 0 && !(e.target as HTMLElement).closest(".tab-close")) switchTab(i);
+      d.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || (e.target as HTMLElement).closest(".tab-close")) return;
+        beginTabDrag(e, t);
+        if (i !== active) switchTab(i);
       });
       d.append(name, x);
       return d;
     }),
   );
+}
+
+/** Drag a tab sideways to reorder it. */
+function beginTabDrag(e: PointerEvent, tab: Tab) {
+  const startX = e.clientX;
+  let moving = false;
+  const move = (ev: PointerEvent) => {
+    if (!moving && Math.abs(ev.clientX - startX) < 6) return;
+    moving = true;
+    const els = [...tabsEl.children] as HTMLElement[];
+    const from = tabs.indexOf(tab);
+    if (from < 0) return;
+    let to = els.findIndex((x) => ev.clientX < x.getBoundingClientRect().right);
+    if (to < 0) to = tabs.length - 1;
+    if (to === from) return;
+    const r = els[to].getBoundingClientRect();
+    const mid = r.left + r.width / 2;
+    if ((to > from && ev.clientX < mid) || (to < from && ev.clientX > mid)) return;
+    const act = cur();
+    tabs.splice(from, 1);
+    tabs.splice(to, 0, tab);
+    if (act) active = tabs.indexOf(act);
+    renderTabs();
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
+    if (moving) persist();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
 }
 
 function render(useTabScroll = false) {
@@ -359,14 +542,25 @@ function render(useTabScroll = false) {
     const col = el("section", "column");
     col.dataset.list = l.id;
 
+    const closed = isFolded(t, l);
+    if (closed) col.classList.add("folded");
     const head = el("div", "col-head");
+    const fold = el("button", "col-fold" + (closed ? "" : " open"));
+    fold.textContent = "›";
+    fold.title = closed ? "Show cards" : "Hide cards";
     const title = el("span", "col-title");
     title.textContent = l.title || "Untitled";
     title.title = "Double-click to rename";
+    const count = el("span", "col-count");
+    count.textContent = String(l.cards.length);
+    count.title = `${l.cards.length} card${l.cards.length === 1 ? "" : "s"}`;
+    const sort = el("button", "col-sort");
+    sort.textContent = "!↓";
+    sort.title = "Sort by urgency";
     const del = el("button", "col-del");
     del.textContent = "×";
     del.title = "Delete list";
-    head.append(title, del);
+    head.append(fold, title, count, sort, del);
 
     const cards = el("div", "cards");
     for (const c of l.cards) {
@@ -374,14 +568,31 @@ function render(useTabScroll = false) {
       ce.dataset.card = c.id;
       if (c.color != null) ce.classList.add("c" + c.color);
       if (c.id === selected) ce.classList.add("selected");
-      if (query) ce.classList.add(matches(c) ? "match" : "dim");
+      if (filtering()) ce.classList.add(matches(c) ? "match" : "dim");
       const row = el("div", "card-row");
       const tt = el("span", "card-title");
-      tt.textContent = c.title || "Untitled";
-      if (!c.title) tt.classList.add("untitled");
+      if (c.title) highlight(tt, c.title, query);
+      else {
+        tt.textContent = "Untitled";
+        tt.classList.add("untitled");
+      }
       row.append(tt);
+      if (c.urgency) {
+        const u = el("span", "card-urg");
+        u.textContent = "!".repeat(c.urgency);
+        u.title = `Urgency ${c.urgency}`;
+        row.append(u);
+      }
+      const prog = checklistProgress(c.body);
+      if (prog.total) {
+        const p = el("span", "card-prog" + (prog.done === prog.total ? " all" : ""));
+        p.textContent = `${prog.done}/${prog.total}`;
+        p.title = "Checklist";
+        row.append(p);
+      }
       if (c.body.trim()) {
-        const open = isExpanded(t, c);
+        // A search hit inside the notes opens the card so the match is visible.
+        const open = isExpanded(t, c) || (!!query && c.body.toLowerCase().includes(query));
         const tg = el("button", "card-toggle" + (open ? " open" : ""));
         tg.textContent = "›";
         tg.title = open ? "Collapse (Space) · ⌥-click: whole list" : "Expand (Space) · ⌥-click: whole list";
@@ -389,7 +600,7 @@ function render(useTabScroll = false) {
         ce.append(row);
         if (open) {
           const body = el("div", "card-body");
-          body.textContent = c.body;
+          renderNotes(body, c.body, query);
           ce.append(body);
         }
       } else {
@@ -437,7 +648,7 @@ function addCard(listId: string) {
   const l = t && findList(t.board, listId);
   if (!t || !l) return;
   const before = serialize(t.board);
-  const card: Card = { id: uid(), title: "", color: null, body: "" };
+  const card: Card = { id: uid(), title: "", color: null, urgency: 0, body: "" };
   l.cards.push(card);
   selected = card.id;
   render();
@@ -478,6 +689,22 @@ function setColor(id: string, n: number) {
   if (!f) return;
   const color = n === 0 || f.card.color === n - 1 ? null : n - 1;
   mutate(() => (f.card.color = color));
+}
+
+function setUrgency(id: string, n: number) {
+  const t = cur();
+  const f = t && findCard(t.board, id);
+  if (!f) return;
+  const urgency = f.card.urgency === n ? 0 : n;
+  mutate(() => (f.card.urgency = urgency));
+}
+
+function sortByUrgency(listId: string) {
+  mutate((b) => {
+    const l = findList(b, listId);
+    // Array.sort is stable: cards with the same urgency keep their order.
+    if (l) l.cards.sort((a, c) => c.urgency - a.urgency);
+  });
 }
 
 function moveCard(id: string, listId: string, index: number) {
@@ -579,7 +806,8 @@ function renderSwatches() {
       b.title = n ? `${COLOR_NAMES[n - 1]} (${n})` : "No color (0)";
       if ((n === 0 && card.color == null) || card.color === n - 1) b.classList.add("on");
       b.addEventListener("click", () => {
-        card.color = n ? n - 1 : null;
+        modal!.card.color = n ? n - 1 : null;
+        modal!.dirty = true;
         scheduleSave(modal!.tab, 300);
         renderSwatches();
       });
@@ -588,11 +816,87 @@ function renderSwatches() {
   );
 }
 
+/** Set urgency on the open card, or else on the selected card. Same level again clears it. */
+function applyUrgency(n: number) {
+  if (modal) {
+    modal.card.urgency = modal.card.urgency === n ? 0 : n;
+    modal.dirty = true;
+    scheduleSave(modal.tab, 300);
+    renderUrgency();
+  } else if (selected) {
+    setUrgency(selected, n);
+  }
+}
+
+function renderUrgency() {
+  if (!modal) return;
+  const { card } = modal;
+  mUrgency.replaceChildren(
+    ...[1, 2, 3].map((n) => {
+      const b = el("button", "urg" + (card.urgency === n ? " on" : ""));
+      b.textContent = "!".repeat(n);
+      b.title = `Urgency ${n} (${isApple ? "⌃" : "Alt+"}${n})`;
+      b.addEventListener("click", () => {
+        applyUrgency(n);
+      });
+      return b;
+    }),
+  );
+}
+
+// ---- checklist helpers for the notes field
+
+function insertText(text: string) {
+  // execCommand keeps the field's own undo history; fall back if unavailable.
+  const ok = text ? document.execCommand("insertText", false, text) : document.execCommand("delete");
+  if (!ok) {
+    mBody.setRangeText(text, mBody.selectionStart, mBody.selectionEnd, "end");
+    mBody.dispatchEvent(new Event("input"));
+  }
+}
+
+function currentLine() {
+  const v = mBody.value;
+  const pos = mBody.selectionStart;
+  const start = v.lastIndexOf("\n", pos - 1) + 1;
+  let end = v.indexOf("\n", pos);
+  if (end < 0) end = v.length;
+  return { start, end, pos, text: v.slice(start, end) };
+}
+
+/** Turn the current line into a checklist item, or add a new item below one. */
+function insertChecklistItem() {
+  mBody.focus();
+  const l = currentLine();
+  const item = l.text.match(CHECK_RE);
+  if (item) {
+    mBody.setSelectionRange(l.end, l.end);
+    insertText("\n" + item[1] + "- [ ] ");
+  } else if (!l.text.trim()) {
+    mBody.setSelectionRange(l.start, l.end);
+    insertText("- [ ] ");
+  } else {
+    const m = l.text.match(/^(\s*)(?:[-*+] )?(.*)$/)!;
+    mBody.setSelectionRange(l.start, l.end);
+    insertText(`${m[1]}- [ ] ${m[2]}`);
+  }
+}
+
 function openModal(tab: Tab, card: Card, before = serialize(tab.board), isNew = false) {
-  modal = { tab, card, before, isNew, wasOpen: isExpanded(tab, card) };
+  modal = {
+    tab,
+    card,
+    before,
+    isNew,
+    wasOpen: isExpanded(tab, card),
+    key: cardKey(tab, card),
+    listTitle: findCard(tab.board, card.id)?.list.title ?? "",
+    dirty: false,
+  };
   mTitle.value = card.title;
   mBody.value = card.body;
   renderSwatches();
+  renderUrgency();
   backdrop.hidden = false;
   if (isNew || !card.title) mTitle.focus();
   else {
@@ -636,11 +940,13 @@ async function closeModal(remove = false) {
 
 mTitle.addEventListener("input", () => {
   if (!modal) return;
+  modal.dirty = true;
   modal.card.title = mTitle.value.replace(/[\r\n]+/g, " ");
   scheduleSave(modal.tab, 500);
 });
 mBody.addEventListener("input", () => {
   if (!modal) return;
+  modal.dirty = true;
   modal.card.body = mBody.value;
   scheduleSave(modal.tab, 500);
 });
@@ -650,6 +956,31 @@ mTitle.addEventListener("keydown", (e) => {
     mBody.focus();
   }
 });
+mBody.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "l" && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    insertChecklistItem();
+    return;
+  }
+  // Enter continues a checklist / bullet list; Enter on an empty item ends it.
+  if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.isComposing) return;
+  if (mBody.selectionStart !== mBody.selectionEnd) return;
+  const l = currentLine();
+  const m = mBody.value.slice(l.start, l.pos).match(/^(\s*)([-*+]) (\[[ xX]\] ?)?(.*)$/);
+  if (!m) return;
+  e.preventDefault();
+  if (!m[4].trim()) {
+    mBody.setSelectionRange(l.start, l.pos);
+    insertText("");
+  } else {
+    insertText("\n" + m[1] + m[2] + " " + (m[3] ? "[ ] " : ""));
+  }
+});
+// Keep the caret in the notes when the button is pressed.
+$("#m-check").addEventListener("pointerdown", (e) => e.preventDefault());
+$("#m-check").addEventListener("mousedown", (e) => e.preventDefault());
+$("#m-check").addEventListener("click", insertChecklistItem);
+
 backdrop.addEventListener("mousedown", (e) => {
   if (e.target === backdrop) closeModal();
 });
@@ -899,7 +1230,7 @@ boardEl.addEventListener("pointerdown", (e) => {
   lastPointerType = e.pointerType;
   if (e.button !== 0) return;
   const target = e.target as HTMLElement;
-  if (target.closest("button, input")) return;
+  if (target.closest("button, input, a")) return;
   if (inInput()) (document.activeElement as HTMLElement).blur();
   const card = target.closest<HTMLElement>(".card");
   if (card) {
@@ -918,6 +1249,7 @@ boardEl.addEventListener("pointerdown", (e) => {
 
 boardEl.addEventListener("dblclick", (e) => {
   const target = e.target as HTMLElement;
+  if (target.closest("button")) return;
   const card = target.closest<HTMLElement>(".card");
   const t = cur();
   if (card && t) {
@@ -932,6 +1264,38 @@ boardEl.addEventListener("dblclick", (e) => {
 boardEl.addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
   const col = target.closest<HTMLElement>(".column");
+  const a = target.closest<HTMLElement>(".md-link");
+  if (a) {
+    const url = a.dataset.href ?? "";
+    if (/^(https?:\/\/|mailto:)/.test(url)) {
+      if (isNative) openUrl(url).catch((err) => console.error("open link failed", err));
+      else window.open(url, "_blank", "noopener");
+    }
+    return;
+  }
+  const headCol = target.closest<HTMLElement>(".column");
+  const tabNow = cur();
+  if (headCol && tabNow && target.closest(".col-fold")) {
+    const l = findList(tabNow.board, headCol.dataset.list!);
+    if (l) toggleFold(tabNow, l);
+    return;
+  }
+  if (headCol && target.closest(".col-sort")) {
+    sortByUrgency(headCol.dataset.list!);
+    return;
+  }
+  const check = target.closest<HTMLElement>(".check");
+  if (check) {
+    const id = check.closest<HTMLElement>(".card")!.dataset.card!;
+    const t = cur();
+    const f = t && findCard(t.board, id);
+    if (f) {
+      selected = id;
+      mutate(() => (f.card.body = toggleCheck(f.card.body, +check.dataset.line!)));
+      updateSelection();
+    }
+    return;
+  }
   const toggle = target.closest(".card-toggle");
   if (lastPointerType === "touch" && !toggle && !drag) {
     // No keyboard on a phone: a tap opens the card (colors are in the editor),
@@ -985,10 +1349,154 @@ searchClear.addEventListener("click", () => {
   searchEl.focus();
 });
 
+// ---------------------------------------------------------------- filter
+
+const filterBtn = $("#filter-btn");
+const filterPop = $("#filter-pop");
+
+function renderFilter() {
+  const active = filterColors.size > 0 || filterUrgency > 0;
+  filterBtn.classList.toggle("on", active);
+  const colors = el("div", "filter-row");
+  COLORS.forEach((_, i) => {
+    const b = el("button", `swatch c${i}` + (filterColors.has(i) ? " on" : ""));
+    b.title = COLOR_NAMES[i];
+    b.addEventListener("click", () => {
+      filterColors.has(i) ? filterColors.delete(i) : filterColors.add(i);
+      renderFilter();
+      render();
+    });
+    colors.append(b);
+  });
+  const urg = el("div", "filter-row");
+  [1, 2, 3].forEach((n) => {
+    const b = el("button", "urg" + (filterUrgency === n ? " on" : ""));
+    b.textContent = "!".repeat(n);
+    b.title = n === 3 ? "Only urgency !!!" : `Urgency ${"!".repeat(n)} or higher`;
+    b.addEventListener("click", () => {
+      filterUrgency = filterUrgency === n ? 0 : n;
+      renderFilter();
+      render();
+    });
+    urg.append(b);
+  });
+  const clear = el("button", "btn filter-clear");
+  clear.textContent = "Clear";
+  clear.disabled = !active;
+  clear.addEventListener("click", clearFilter);
+  urg.append(clear);
+  filterPop.replaceChildren(colors, urg);
+}
+
+function clearFilter() {
+  filterColors.clear();
+  filterUrgency = 0;
+  renderFilter();
+  render();
+}
+
+filterBtn.addEventListener("click", () => {
+  filterPop.hidden = !filterPop.hidden;
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!filterPop.hidden && !(e.target as HTMLElement).closest("#filter-wrap")) filterPop.hidden = true;
+});
+renderFilter();
+
+// ---------------------------------------------------------------- actions
+// Shared by keyboard shortcuts and the native menu bar.
+
+const lastRun = new Map<string, number>();
+
+function runAction(id: string) {
+  // A menu shortcut can arrive both as a menu event and as a key press.
+  const now = performance.now();
+  if (now - (lastRun.get(id) ?? -1e9) < 40) return;
+  lastRun.set(id, now);
+
+  const urgency = id.match(/^urgency-([0-3])$/);
+  if (urgency) {
+    applyUrgency(+urgency[1]);
+    return;
+  }
+  switch (id) {
+    case "open":
+      addFiles();
+      break;
+    case "new":
+      newBoard();
+      break;
+    case "close-tab":
+      if (modal) closeModal();
+      else if (cur()) closeTab(active);
+      else if (isNative) getCurrentWindow().close();
+      break;
+    case "undo":
+    case "redo":
+      // In a text field, undo typing; otherwise undo the last board change.
+      if (inInput()) document.execCommand(id);
+      else if (id === "undo") undo();
+      else redo();
+      break;
+    case "find":
+      if (modal) break;
+      searchEl.focus();
+      searchEl.select();
+      break;
+    case "zoom-in":
+      setZoom(zoom + 0.1);
+      break;
+    case "zoom-out":
+      setZoom(zoom - 0.1);
+      break;
+    case "zoom-reset":
+      setZoom(1);
+      break;
+    case "sort-urgency": {
+      const t = cur();
+      const f = t && findCard(t.board, selected);
+      if (f) sortByUrgency(f.list.id);
+      break;
+    }
+    case "clear-filter":
+      clearFilter();
+      break;
+  }
+}
+onMenu(runAction);
+
 // ---------------------------------------------------------------- keyboard
 
 window.addEventListener("keydown", (e) => {
-  const mod = e.metaKey || e.ctrlKey;
+  const mod = isApple ? e.metaKey : e.ctrlKey;
+  const urg = urgencyDigit(e);
+
+  if (urg != null) {
+    e.preventDefault();
+    runAction("urgency-" + urg);
+    return;
+  }
+
+  // Shortcuts that also exist in the native menu bar go through runAction,
+  // which ignores the duplicate if both the menu and this handler fire.
+  if (mod) {
+    const k = e.key.toLowerCase();
+    const action =
+      k === "z" ? (e.shiftKey ? "redo" : "undo")
+      : k === "w" ? "close-tab"
+      : k === "o" ? "open"
+      : k === "n" ? "new"
+      : k === "f" ? "find"
+      : k === "=" || k === "+" ? "zoom-in"
+      : k === "-" ? "zoom-out"
+      : k === "0" ? "zoom-reset"
+      : null;
+    if (action) {
+      e.preventDefault();
+      runAction(action);
+      return;
+    }
+  }
 
   if (modal) {
     if (e.key === "Escape" || (mod && e.key === "Enter")) {
@@ -999,22 +1507,7 @@ window.addEventListener("keydown", (e) => {
   }
 
   if (mod) {
-    const k = e.key.toLowerCase();
-    if (k === "f") {
-      e.preventDefault();
-      searchEl.focus();
-      searchEl.select();
-    } else if (k === "o") {
-      e.preventDefault();
-      addFiles();
-    } else if (k === "n") {
-      e.preventDefault();
-      newBoard();
-    } else if (k === "z" && !inInput()) {
-      e.preventDefault();
-      if (e.shiftKey) redo();
-      else undo();
-    } else if (/^[1-9]$/.test(e.key) && +e.key <= tabs.length) {
+    if (/^[1-9]$/.test(e.key) && +e.key <= tabs.length) {
       e.preventDefault();
       switchTab(+e.key - 1);
     }
@@ -1031,7 +1524,8 @@ window.addEventListener("keydown", (e) => {
   }
 
   if (e.key === "Escape") {
-    if (query) {
+    if (!filterPop.hidden) filterPop.hidden = true;
+    else if (query) {
       searchEl.value = "";
       setQuery("");
     } else select(null);

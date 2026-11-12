@@ -160,10 +160,83 @@ fn open_documents_folder(app: &AppHandle) {
     request_open(app, boards);
 }
 
+/// Native menu bar. Items send their id to the UI, which runs the action.
+#[cfg(desktop)]
+fn build_menu(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+    let item = |id: &str, label: &str, accel: Option<&str>| {
+        let mut b = MenuItemBuilder::with_id(id, label);
+        if let Some(a) = accel {
+            b = b.accelerator(a);
+        }
+        b.build(app)
+    };
+
+    let app_menu = SubmenuBuilder::new(app, "Project MD")
+        .about(None)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+    let file = SubmenuBuilder::new(app, "File")
+        .item(&item("new", "New Board…", Some("CmdOrCtrl+N"))?)
+        .item(&item("open", "Open…", Some("CmdOrCtrl+O"))?)
+        .separator()
+        .item(&item("close-tab", "Close Tab", Some("CmdOrCtrl+W"))?)
+        .build()?;
+    let edit = SubmenuBuilder::new(app, "Edit")
+        .item(&item("undo", "Undo", Some("CmdOrCtrl+Z"))?)
+        .item(&item("redo", "Redo", Some("CmdOrCtrl+Shift+Z"))?)
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .separator()
+        .item(&item("find", "Find", Some("CmdOrCtrl+F"))?)
+        .build()?;
+    let card = SubmenuBuilder::new(app, "Card")
+        .item(&item("urgency-1", "Urgency !", Some("Ctrl+1"))?)
+        .item(&item("urgency-2", "Urgency !!", Some("Ctrl+2"))?)
+        .item(&item("urgency-3", "Urgency !!!", Some("Ctrl+3"))?)
+        .item(&item("urgency-0", "No Urgency", Some("Ctrl+0"))?)
+        .separator()
+        .item(&item("sort-urgency", "Sort List by Urgency", None)?)
+        .item(&item("clear-filter", "Clear Filter", None)?)
+        .build()?;
+    let view = SubmenuBuilder::new(app, "View")
+        .item(&item("zoom-in", "Zoom In", Some("CmdOrCtrl+="))?)
+        .item(&item("zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?)
+        .item(&item("zoom-reset", "Actual Size", Some("CmdOrCtrl+0"))?)
+        .separator()
+        .fullscreen()
+        .build()?;
+    let window = SubmenuBuilder::new(app, "Window").minimize().maximize().build()?;
+
+    let menu = MenuBuilder::new(app)
+        .items(&[&app_menu, &file, &edit, &card, &view, &window])
+        .build()?;
+    app.set_menu(menu)?;
+    app.on_menu_event(|app, event| {
+        let _ = app.emit("menu", event.id().as_ref());
+    });
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init());
+    // Remember the window's size and position between launches.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    builder
         .manage(Shared::default())
         .manage(PendingOpens::default())
         .setup(|app| {
@@ -174,6 +247,8 @@ pub fn run() {
             request_open(app.handle(), args);
             #[cfg(mobile)]
             open_documents_folder(app.handle());
+            #[cfg(desktop)]
+            build_menu(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

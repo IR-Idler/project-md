@@ -17,7 +17,7 @@
   --c3: #30a46c;
   --c4: #0090ff;
   --c5: #8e4ec6;
-  --tint: 13%;
+  --tint: 17%;
   color-scheme: light dark;
 }
 
@@ -35,7 +35,7 @@
     --dim: #3a3a3e;
     --input: #1b1b1d;
     --shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
-    --tint: 22%;
+    --tint: 26%;
   }
 }
 
@@ -209,6 +209,7 @@ textarea {
 /* ---------------------------------------------------------------- board */
 
 #board {
+  font-size: calc(13px * var(--z, 1));
   flex: 1;
   min-height: 0;
   display: flex;
@@ -221,7 +222,7 @@ textarea {
 
 .column {
   flex: none;
-  width: 270px;
+  width: calc(270px * var(--z, 1));
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -230,21 +231,41 @@ textarea {
 }
 
 .col-head {
-  position: relative;
-  padding: 10px 30px 8px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  padding: 8px 6px 6px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 1.08em;
   cursor: grab;
 }
+.col-fold {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-right: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 20px;
+  transition: transform 0.12s ease;
+}
+.col-fold.open {
+  transform: rotate(90deg);
+}
 .col-title {
-  display: block;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .col-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 0 4px;
   border: 1px solid var(--muted);
   border-radius: 4px;
@@ -253,25 +274,63 @@ textarea {
   text-align: center;
   outline: none;
 }
+.col-count {
+  flex: none;
+  width: 56px;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85em;
+}
+.col-sort,
 .col-del {
-  position: absolute;
-  right: 6px;
-  top: 8px;
-  width: 22px;
+  display: none;
+  flex: none;
+  width: 28px;
   height: 22px;
   padding: 0;
   border: 0;
   border-radius: 4px;
   background: none;
   color: var(--muted);
-  opacity: 0;
+  font-size: 12px;
 }
-.col-head:hover .col-del {
-  opacity: 1;
+/* On hover the card count makes room for the list's buttons. */
+@media (hover: hover) {
+  .col-head:hover .col-count {
+    display: none;
+  }
+  .col-head:hover .col-sort,
+  .col-head:hover .col-del {
+    display: block;
+  }
+  .col-fold:hover,
+  .col-sort:hover,
+  .col-del:hover {
+    background: var(--line);
+    color: var(--text);
+  }
 }
-.col-del:hover {
-  background: var(--line);
-  color: var(--text);
+@media (hover: none) {
+  .col-fold {
+    margin-right: 54px;
+  }
+  .col-count {
+    width: 20px;
+    padding-right: 0;
+  }
+  .col-sort,
+  .col-del {
+    display: block;
+  }
+}
+.column.folded .cards,
+.column.folded .add-card {
+  display: none;
+}
+.column.folded .col-head {
+  padding-bottom: 8px;
 }
 
 .cards {
@@ -302,6 +361,53 @@ textarea {
   flex: 1;
   min-width: 0;
 }
+.card-urg {
+  flex: none;
+  color: var(--c0);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.card-prog {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.85em;
+  line-height: 19px;
+}
+.card-prog.all {
+  color: var(--c3);
+}
+.body-gap {
+  height: 0.6em;
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 1px 0;
+}
+.check-row.done span {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  padding: 0;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+  background: var(--card);
+  color: var(--card);
+  font-size: 10px;
+  line-height: 11px;
+  font-weight: 700;
+}
+.check.on {
+  background: var(--c3);
+  border-color: var(--c3);
+  color: #fff;
+}
 .card-toggle {
   flex: none;
   width: 18px;
@@ -330,7 +436,7 @@ textarea {
   padding-top: 6px;
   border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   color: color-mix(in srgb, var(--text) 72%, transparent);
-  font-size: 12px;
+  font-size: 0.92em;
   line-height: 1.5;
 }
 .card-title.untitled {
@@ -341,12 +447,12 @@ textarea {
   outline-offset: -2px;
 }
 
-.card.c0 { background: color-mix(in srgb, var(--c0) var(--tint), var(--card)); box-shadow: inset 3px 0 var(--c0), var(--shadow); }
-.card.c1 { background: color-mix(in srgb, var(--c1) var(--tint), var(--card)); box-shadow: inset 3px 0 var(--c1), var(--shadow); }
-.card.c2 { background: color-mix(in srgb, var(--c2) var(--tint), var(--card)); box-shadow: inset 3px 0 var(--c2), var(--shadow); }
-.card.c3 { background: color-mix(in srgb, var(--c3) var(--tint), var(--card)); box-shadow: inset 3px 0 var(--c3), var(--shadow); }
-.card.c4 { background: color-mix(in srgb, var(--c4) var(--tint), var(--card)); box-shadow: inset 3px 0 var(--c4), var(--shadow); }
-.card.c5 { background: color-mix(in srgb, var(--c5) var(--tint), var(--card)); box-shadow: inset 3px 0 var(--c5), var(--shadow); }
+.card.c0 { background: color-mix(in srgb, var(--c0) var(--tint), var(--card)); }
+.card.c1 { background: color-mix(in srgb, var(--c1) var(--tint), var(--card)); }
+.card.c2 { background: color-mix(in srgb, var(--c2) var(--tint), var(--card)); }
+.card.c3 { background: color-mix(in srgb, var(--c3) var(--tint), var(--card)); }
+.card.c4 { background: color-mix(in srgb, var(--c4) var(--tint), var(--card)); }
+.card.c5 { background: color-mix(in srgb, var(--c5) var(--tint), var(--card)); }
 
 /* search: non-matching cards collapse to thin bars */
 .card.dim {
@@ -374,7 +480,7 @@ textarea {
 
 .add-list {
   flex: none;
-  width: 270px;
+  width: calc(270px * var(--z, 1));
   height: 40px;
   border: 1px dashed var(--line);
   border-radius: 6px;
@@ -396,12 +502,13 @@ textarea {
 }
 .col-placeholder {
   flex: none;
-  width: 270px;
+  width: calc(270px * var(--z, 1));
   border-radius: 6px;
   background: color-mix(in srgb, var(--text) 5%, transparent);
   border: 1px dashed color-mix(in srgb, var(--text) 25%, transparent);
 }
 .ghost {
+  font-size: calc(13px * var(--z, 1));
   position: fixed;
   z-index: 1000;
   margin: 0;
@@ -489,9 +596,33 @@ body.dragging * {
   padding: 8px 12px;
   border-top: 1px solid var(--line);
 }
+#m-foot {
+  flex-wrap: wrap;
+}
 #m-colors {
   display: flex;
   gap: 6px;
+}
+#m-urgency {
+  display: flex;
+  gap: 4px;
+}
+.urg {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-weight: 700;
+}
+.urg.on {
+  border-color: var(--c0);
+  background: var(--c0);
+  color: #fff;
+}
+.foot-space {
   flex: 1;
 }
 .swatch {
@@ -527,6 +658,85 @@ body.dragging * {
   color: var(--bg);
 }
 
+/* an empty list still offers a visible place to drop a card */
+body.dragging .cards {
+  min-height: 34px;
+}
+
+mark {
+  background: color-mix(in srgb, var(--c2) 55%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.md-link {
+  color: var(--c4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.card-body code,
+.body-code {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.body-code {
+  border-radius: 0;
+  white-space: pre-wrap;
+}
+.body-head {
+  font-weight: 700;
+  color: var(--text);
+}
+.bullet-row {
+  display: flex;
+  gap: 7px;
+}
+.bullet {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- filter */
+
+#filter-wrap {
+  position: relative;
+  align-self: center;
+}
+.btn.on {
+  border-color: var(--sel);
+  background: var(--sel);
+  color: var(--bg);
+}
+#filter-pop {
+  position: absolute;
+  right: 0;
+  top: 32px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.filter-clear {
+  margin-left: auto;
+  height: 24px;
+}
+.filter-clear:disabled {
+  opacity: 0.4;
+}
+
 .card.lifting {
   transform: scale(1.03);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
@@ -545,7 +755,7 @@ body.dragging * {
     padding: 0 4px 0 10px;
   }
   #search {
-    width: 120px;
+    width: 96px;
     font-size: 16px; /* stops iOS zooming in on focus */
   }
   #search:focus {
@@ -573,6 +783,21 @@ body.dragging * {
   .card {
     padding: 10px 12px;
     font-size: 14px;
+  }
+  .check {
+    width: 20px;
+    height: 20px;
+    font-size: 13px;
+    line-height: 17px;
+    margin-top: 0;
+  }
+  .check-row {
+    padding: 3px 0;
+    gap: 9px;
+  }
+  .urg {
+    height: 28px;
+    min-width: 30px;
   }
   .card-toggle {
     width: 28px;

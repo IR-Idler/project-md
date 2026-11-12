@@ -52,3 +52,8 @@ export function onOpenRequest(cb: (paths: string[]) => void) {
   listen("open-files", take);
   take();
 }
+
+/** Native menu bar items (desktop). */
+export function onMenu(cb: (id: string) => void) {
+  if (isNative) listen<string>("menu", (e) => cb(e.payload));
+}

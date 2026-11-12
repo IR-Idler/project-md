@@ -5,13 +5,40 @@
 //   ### Heading                  -> a card inside the current list
 //   lines below a ### heading    -> the card's text
 //   trailing 🟥 🟧 🟨 🟩 🟦 🟪 in a card heading -> the card's color
+//   trailing ❗ / ❗❗ / ❗❗❗ in a card heading  -> the card's urgency (1-3)
+//   "- [ ] text" / "- [x] text" lines in a card -> checklist items
 //
 // Headings inside fenced code blocks (``` or ~~~) are treated as plain text.
 
 export const COLORS = ["🟥", "🟧", "🟨", "🟩", "🟦", "🟪"] as const;
 export const COLOR_NAMES = ["Red", "Orange", "Yellow", "Green", "Blue", "Purple"];
 
-export type Card = { id: string; title: string; color: number | null; body: string };
+export const URGENT = "❗";
+export type Card = { id: string; title: string; color: number | null; urgency: number; body: string };
+
+/** A checklist line: [1] indent, [2] " " or "x", [3] text. */
+export const CHECK_RE = /^(\s*)[-*+] \[([ xX])\] ?(.*)$/;
+
+export function checklistProgress(body: string): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  for (const line of body.split("\n")) {
+    const m = line.match(CHECK_RE);
+    if (!m) continue;
+    total++;
+    if (m[2] !== " ") done++;
+  }
+  return { done, total };
+}
+
+/** Tick / untick the checklist item on the given line of a card's text. */
+export function toggleCheck(body: string, lineIndex: number): string {
+  const lines = body.split("\n");
+  const line = lines[lineIndex];
+  if (line == null || !CHECK_RE.test(line)) return body;
+  lines[lineIndex] = line.replace(/\[([ xX])\]/, (_, c) => (c === " " ? "[x]" : "[ ]"));
+  return lines.join("\n");
+}
 export type List = { id: string; title: string; body: string; cards: Card[] };
 export type Board = { preamble: string; lists: List[]; crlf: boolean };
 
@@ -26,17 +53,34 @@ function trimBlank(lines: string[]): string {
   return lines.slice(s, e).join("\n");
 }
 
-function splitColor(raw: string): { title: string; color: number | null } {
+/** Split "Title ❗❗ 🟩" into its title, urgency and color. */
+function splitMeta(raw: string): { title: string; color: number | null; urgency: number } {
   let title = raw.trim();
-  for (let i = 0; i < COLORS.length; i++) {
-    if (title.endsWith(COLORS[i])) {
-      return { title: title.slice(0, -COLORS[i].length).trim(), color: i };
+  let color: number | null = null;
+  let urgency = 0;
+  for (;;) {
+    const ci: number = color == null ? COLORS.findIndex((c) => title.endsWith(c)) : -1;
+    if (ci >= 0) {
+      color = ci;
+      title = title.slice(0, -COLORS[ci].length).trimEnd();
+      continue;
     }
-    if (title.startsWith(COLORS[i])) {
-      return { title: title.slice(COLORS[i].length).trim(), color: i };
+    const m = title.match(/❗\uFE0F?$/);
+    if (m) {
+      urgency++;
+      title = title.slice(0, -m[0].length).trimEnd();
+      continue;
+    }
+    break;
+  }
+  if (color == null) {
+    const ci = COLORS.findIndex((c) => title.startsWith(c));
+    if (ci >= 0) {
+      color = ci;
+      title = title.slice(COLORS[ci].length).trimStart();
     }
   }
-  return { title, color: null };
+  return { title, color, urgency: Math.min(urgency, 3) };
 }
 
 const LIST_RE = /^##(?!#)(?:[ \t]+(.*))?$/;
@@ -84,7 +128,7 @@ export function parse(text: string): Board {
       m = line.match(CARD_RE);
       if (m && list) {
         flush();
-        card = { id: uid(), ...splitColor(m[1] ?? ""), body: "" };
+        card = { id: uid(), ...splitMeta(m[1] ?? ""), body: "" };
         list.cards.push(card);
         buf = [];
         continue;
@@ -104,7 +148,7 @@ export function serialize(board: Board): string {
     const lb = trimBlank(l.body.split("\n"));
     if (lb) out.push(lb, "");
     for (const c of l.cards) {
-      const mark = c.color != null ? " " + COLORS[c.color] : "";
+      const mark = (c.urgency ? " " + URGENT.repeat(c.urgency) : "") + (c.color != null ? " " + COLORS[c.color] : "");
       out.push(`### ${c.title}${mark}`.trimEnd(), "");
       const cb = trimBlank(c.body.split("\n"));
       if (cb) out.push(cb, "");
