@@ -16,7 +16,7 @@ Text below the card     -> the card's notes
 - Click a card to select it · double-click / Enter to open it · Esc closes
 - Space (or the › arrow) expands a card to show its notes on the board; ⌥ does the whole list
 - `1`–`6` set the color, `0` (or the same number again) removes it
-- `⇧1`–`⇧3` set the urgency (`!`, `!!`, `!!!`), `⇧0` removes it. `⌃1`–`⌃3` work too,
+- `⌥1`–`⌥3` or `⇧1`–`⇧3` set the urgency (`!`, `!!`, `!!!`), `⌥0` removes it. `⌃1`–`⌃3` work too,
   unless macOS uses them for switching desktops (System Settings → Keyboard →
   Keyboard Shortcuts → Mission Control)
 - Checklists: in a card press ⌘L or "☐ Checklist"; Enter adds the next item. Tick items on the expanded card

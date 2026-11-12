@@ -210,7 +210,8 @@ function urgencyDigit(e: KeyboardEvent): number | null {
   // Shift+0-3 also works (outside text fields): macOS can reserve Ctrl+digits
   // for switching desktops, in which case the app never sees them.
   const shift = e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !inInput();
-  const held = shift || (isApple ? e.ctrlKey && !e.metaKey : e.altKey && !e.ctrlKey);
+  const option = isApple && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && !inInput();
+  const held = shift || option || (isApple ? e.ctrlKey && !e.metaKey : e.altKey && !e.ctrlKey);
   const m = held ? e.code.match(/^Digit([0-3])$/) : null;
   return m ? +m[1] : null;
 }
@@ -861,7 +862,7 @@ function renderUrgency() {
     ...[1, 2, 3].map((n) => {
       const b = el("button", "urg" + (card.urgency === n ? " on" : ""));
       b.textContent = "!".repeat(n);
-      b.title = `Urgency ${n} (${isApple ? "⌃" : "Alt+"}${n})`;
+      b.title = `Urgency ${n} (${isApple ? "⌥" : "Alt+"}${n} or ⇧${n})`;
       b.addEventListener("click", () => {
         applyUrgency(n);
       });
@@ -1457,7 +1458,9 @@ const lastRun = new Map<string, number>();
 function runAction(id: string) {
   // A menu shortcut can arrive both as a menu event and as a key press.
   const now = performance.now();
-  if (now - (lastRun.get(id) ?? -1e9) < 40) return;
+  // Urgency toggles, so a duplicate would undo itself: give it a wider window.
+  const windowMs = id.startsWith("urgency-") ? 300 : 40;
+  if (now - (lastRun.get(id) ?? -1e9) < windowMs) return;
   lastRun.set(id, now);
 
   const urgency = id.match(/^urgency-([0-3])$/);
