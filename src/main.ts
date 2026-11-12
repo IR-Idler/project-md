@@ -654,20 +654,55 @@ backdrop.addEventListener("mousedown", (e) => {
   if (e.target === backdrop) closeModal();
 });
 $("#m-delete").addEventListener("click", () => closeModal(true));
+$("#m-done").addEventListener("click", () => closeModal());
+
+// Keep the card editor above the on-screen keyboard on phones.
+const vv = window.visualViewport;
+if (vv) {
+  const fit = () => {
+    document.documentElement.style.setProperty("--vvh", vv.height + "px");
+    document.documentElement.style.setProperty("--vvt", vv.offsetTop + "px");
+  };
+  vv.addEventListener("resize", fit);
+  vv.addEventListener("scroll", fit);
+  fit();
+}
 
 // ---------------------------------------------------------------- drag & drop
 // Pointer-based (not HTML5 drag events) so it behaves the same with a mouse,
 // a trackpad, and later on touch screens.
 
-type Press = { kind: "card" | "list"; el: HTMLElement; id: string; x: number; y: number };
+type Press = {
+  kind: "card" | "list";
+  el: HTMLElement;
+  id: string;
+  x: number;
+  y: number;
+  touch: boolean;
+  armed: boolean; // touch: held long enough to start dragging
+  timer: number;
+};
 type Drag = Press & { ghost: HTMLElement; ph: HTMLElement; dx: number; dy: number; raf: number };
 
 let press: Press | null = null;
 let drag: Drag | null = null;
 
+/** Lists stacked top to bottom (phone layout) instead of side by side. */
+const isVertical = () => getComputedStyle(boardEl).flexDirection === "column";
+
 function beginPress(e: PointerEvent, kind: Press["kind"], target: HTMLElement) {
   const id = kind === "card" ? target.dataset.card! : target.dataset.list!;
-  press = { kind, el: target, id, x: e.clientX, y: e.clientY };
+  const touch = e.pointerType === "touch";
+  press = { kind, el: target, id, x: e.clientX, y: e.clientY, touch, armed: !touch, timer: 0 };
+  if (touch) {
+    // On touch screens a quick swipe scrolls; press and hold to pick a card up.
+    press.timer = window.setTimeout(() => {
+      if (!press) return;
+      press.armed = true;
+      press.el.classList.add("lifting");
+      navigator.vibrate?.(10);
+    }, 350);
+  }
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
   window.addEventListener("pointercancel", onPointerUp);
@@ -676,23 +711,53 @@ function beginPress(e: PointerEvent, kind: Press["kind"], target: HTMLElement) {
 function onPointerMove(e: PointerEvent) {
   if (!press) return;
   if (!drag) {
-    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < 5) return;
+    const dist = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+    if (!press.armed) {
+      if (dist > 8) cancelPress(); // the finger is scrolling
+      return;
+    }
+    if (dist < 5) return;
     startDrag();
   }
   moveDrag(e.clientX, e.clientY);
 }
 
-function onPointerUp(e: PointerEvent) {
+function cancelPress() {
   window.removeEventListener("pointermove", onPointerMove);
   window.removeEventListener("pointerup", onPointerUp);
   window.removeEventListener("pointercancel", onPointerUp);
-  if (drag) endDrag(e.type === "pointercancel");
-  else if (press?.kind === "card") select(press.id);
+  if (press) {
+    clearTimeout(press.timer);
+    press.el.classList.remove("lifting");
+  }
   press = null;
 }
 
+function onPointerUp(e: PointerEvent) {
+  const p = press;
+  cancelPress();
+  if (drag) {
+    endDrag(e.type === "pointercancel");
+    return;
+  }
+  if (!p || e.type === "pointercancel" || p.touch) return; // touch taps: see "click"
+  if (p.kind === "card") select(p.id);
+}
+
+let lastPointerType = "mouse";
+
+// While a touch drag is active, stop the page from scrolling under the finger.
+document.addEventListener(
+  "touchmove",
+  (e) => {
+    if (drag || press?.armed) e.preventDefault();
+  },
+  { passive: false },
+);
+
 function startDrag() {
   if (!press) return;
+  press.el.classList.remove("lifting");
   const src = press.el;
   const r = src.getBoundingClientRect();
   const ghost = src.cloneNode(true) as HTMLElement;
@@ -728,16 +793,19 @@ function moveDrag(x: number, y: number) {
 
   if (drag.kind === "card") {
     if (!cols.length) return;
+    const vertical = isVertical();
+    const pos = vertical ? y : x;
+    const span = (r: DOMRect) => (vertical ? [r.top, r.bottom] : [r.left, r.right]);
     let col = cols.find((c) => {
-      const r = c.getBoundingClientRect();
-      return x >= r.left && x <= r.right;
+      const [a, b] = span(c.getBoundingClientRect());
+      return pos >= a && pos <= b;
     });
     if (!col) {
-      col = cols.reduce((best, c) => {
-        const r = c.getBoundingClientRect();
-        const b = best.getBoundingClientRect();
-        return Math.abs(x - (r.left + r.right) / 2) < Math.abs(x - (b.left + b.right) / 2) ? c : best;
-      });
+      const dist = (c: HTMLElement) => {
+        const [a, b] = span(c.getBoundingClientRect());
+        return Math.abs(pos - (a + b) / 2);
+      };
+      col = cols.reduce((best, c) => (dist(c) < dist(best) ? c : best));
     }
     const list = col.querySelector<HTMLElement>(".cards")!;
     const items = [...list.children].filter((c) => c.classList.contains("card") && c !== drag!.el);
@@ -751,9 +819,10 @@ function moveDrag(x: number, y: number) {
       list.append(drag.ph);
     }
   } else {
+    const vertical = isVertical();
     const before = cols.find((c) => {
       const r = c.getBoundingClientRect();
-      return x < r.left + r.width / 2;
+      return vertical ? y < r.top + r.height / 2 : x < r.left + r.width / 2;
     });
     const anchor = before ?? boardEl.querySelector(".add-list");
     if (anchor && drag.ph.nextElementSibling !== anchor) boardEl.insertBefore(drag.ph, anchor);
@@ -765,7 +834,15 @@ function autoScroll() {
   const edge = 70;
   const br = boardEl.getBoundingClientRect();
   let moved = false;
-  if (lastX < br.left + edge) {
+  if (isVertical()) {
+    if (lastY < br.top + edge) {
+      boardEl.scrollTop -= (br.top + edge - lastY) / 4;
+      moved = true;
+    } else if (lastY > br.bottom - edge) {
+      boardEl.scrollTop += (lastY - (br.bottom - edge)) / 4;
+      moved = true;
+    }
+  } else if (lastX < br.left + edge) {
     boardEl.scrollLeft -= (br.left + edge - lastX) / 4;
     moved = true;
   } else if (lastX > br.right - edge) {
@@ -819,19 +896,20 @@ function endDrag(cancel: boolean) {
 // ---------------------------------------------------------------- board events
 
 boardEl.addEventListener("pointerdown", (e) => {
+  lastPointerType = e.pointerType;
   if (e.button !== 0) return;
   const target = e.target as HTMLElement;
   if (target.closest("button, input")) return;
   if (inInput()) (document.activeElement as HTMLElement).blur();
   const card = target.closest<HTMLElement>(".card");
   if (card) {
-    e.preventDefault();
+    if (e.pointerType !== "touch") e.preventDefault();
     beginPress(e, "card", card);
     return;
   }
   const head = target.closest<HTMLElement>(".col-head");
   if (head) {
-    e.preventDefault();
+    if (e.pointerType !== "touch") e.preventDefault();
     beginPress(e, "list", head.parentElement!);
     return;
   }
@@ -855,6 +933,24 @@ boardEl.addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
   const col = target.closest<HTMLElement>(".column");
   const toggle = target.closest(".card-toggle");
+  if (lastPointerType === "touch" && !toggle && !drag) {
+    // No keyboard on a phone: a tap opens the card (colors are in the editor),
+    // and a tap on a list title renames it.
+    const card = target.closest<HTMLElement>(".card");
+    const t = cur();
+    if (card && t) {
+      const f = findCard(t.board, card.dataset.card!);
+      if (f) {
+        select(f.card.id);
+        openModal(t, f.card);
+      }
+      return;
+    }
+    if (target.closest(".col-title") && col) {
+      startRename(col.dataset.list!);
+      return;
+    }
+  }
   if (toggle) {
     const id = toggle.closest<HTMLElement>(".card")!.dataset.card!;
     select(id);
@@ -868,7 +964,7 @@ boardEl.addEventListener("click", (e) => {
 boardEl.addEventListener(
   "wheel",
   (e) => {
-    if (e.deltaX !== 0 || e.shiftKey) return;
+    if (e.deltaX !== 0 || e.shiftKey || isVertical()) return;
     if ((e.target as HTMLElement).closest(".cards")) return;
     boardEl.scrollLeft += e.deltaY;
   },
@@ -974,6 +1070,10 @@ $("#add-files").addEventListener("click", addFiles);
 $("#empty-open").addEventListener("click", addFiles);
 $("#empty-new").addEventListener("click", newBoard);
 
+if (isNative && /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints === 0) {
+  document.documentElement.classList.add("mac");
+}
+
 if (isNative) {
   // Dropping .md files onto the window opens them.
   getCurrentWebview().onDragDropEvent((e) => {
@@ -999,3 +1099,4 @@ if (isNative) {
     for (const p of ps) await openPath(p);
   });
 })();
+

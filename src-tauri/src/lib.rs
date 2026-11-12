@@ -39,18 +39,30 @@ fn request_open(app: &AppHandle, paths: Vec<String>) {
     let _ = app.emit("open-files", ());
 }
 
+/// Accepts plain paths and file:// URLs (what the file picker returns on iOS).
+fn to_path(p: &str) -> PathBuf {
+    if p.starts_with("file://") {
+        if let Ok(u) = tauri::Url::parse(p) {
+            if let Ok(path) = u.to_file_path() {
+                return path;
+            }
+        }
+    }
+    PathBuf::from(p)
+}
+
 fn canon(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    std::fs::read_to_string(to_path(&path)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn write_file(path: String, contents: String) -> Result<(), String> {
-    std::fs::write(&path, contents).map_err(|e| e.to_string())
+    std::fs::write(to_path(&path), contents).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -76,7 +88,7 @@ fn watch_file(app: AppHandle, state: State<Shared>, path: String) -> Result<(), 
         s.watcher = Some(watcher);
     }
 
-    let file = canon(Path::new(&path));
+    let file = canon(&to_path(&path));
     if s.files.contains_key(&file) {
         return Ok(());
     }
@@ -99,7 +111,7 @@ fn watch_file(app: AppHandle, state: State<Shared>, path: String) -> Result<(), 
 #[tauri::command]
 fn unwatch_file(state: State<Shared>, path: String) -> Result<(), String> {
     let mut s = state.lock().map_err(|e| e.to_string())?;
-    let file = canon(Path::new(&path));
+    let file = canon(&to_path(&path));
     if s.files.remove(&file).is_none() {
         return Ok(());
     }
@@ -120,6 +132,34 @@ fn unwatch_file(state: State<Shared>, path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// On phones, boards live in the app's Documents folder (visible in the Files
+/// app). Open every board there, and create a starter board on first launch.
+#[cfg(mobile)]
+fn open_documents_folder(app: &AppHandle) {
+    let Ok(dir) = app.path().document_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let list = |dir: &Path| -> Vec<String> {
+        let mut v: Vec<String> = std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|x| x == "md" || x == "markdown"))
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        v.sort();
+        v
+    };
+    let mut boards = list(&dir);
+    if boards.is_empty() {
+        let welcome = dir.join("Welcome.md");
+        let _ = std::fs::write(&welcome, include_str!("../../example/hello.md"));
+        boards = list(&dir);
+    }
+    request_open(app, boards);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -132,6 +172,8 @@ pub fn run() {
                 .filter(|a| !a.starts_with('-'))
                 .collect();
             request_open(app.handle(), args);
+            #[cfg(mobile)]
+            open_documents_folder(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
