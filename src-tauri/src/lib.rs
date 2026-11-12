@@ -41,6 +41,10 @@ fn request_open(app: &AppHandle, paths: Vec<String>) {
 
 /// Accepts plain paths and file:// URLs (what the file picker returns on iOS).
 fn to_path(p: &str) -> PathBuf {
+    #[cfg(target_os = "ios")]
+    if let Some(path) = scoped::access(p) {
+        return path;
+    }
     if p.starts_with("file://") {
         if let Ok(u) = tauri::Url::parse(p) {
             if let Ok(path) = u.to_file_path() {
@@ -130,6 +134,139 @@ fn unwatch_file(state: State<Shared>, path: String) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// iOS: files picked outside the app (iCloud Drive, other apps' folders) can
+/// only be read and written after asking for security-scoped access. A
+/// bookmark is kept for each one so it can be reopened after a relaunch.
+#[cfg(target_os = "ios")]
+mod scoped {
+    use objc2::rc::Retained;
+    use objc2::runtime::Bool;
+    use objc2_foundation::{NSData, NSString, NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions, NSURL};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+
+    static STORE: OnceLock<PathBuf> = OnceLock::new();
+    static OPEN: Mutex<Option<HashMap<String, PathBuf>>> = Mutex::new(None);
+
+    pub fn init(data_dir: PathBuf) {
+        let _ = std::fs::create_dir_all(&data_dir);
+        let _ = STORE.set(data_dir.join("bookmarks.json"));
+    }
+
+    fn load() -> HashMap<String, Vec<u8>> {
+        STORE
+            .get()
+            .and_then(|f| std::fs::read(f).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    fn store(key: &str, data: Vec<u8>) {
+        let Some(f) = STORE.get() else { return };
+        let mut all = load();
+        all.insert(key.to_string(), data);
+        if let Ok(json) = serde_json::to_vec(&all) {
+            let _ = std::fs::write(f, json);
+        }
+    }
+
+    fn path_of(url: &NSURL) -> Option<PathBuf> {
+        url.path().map(|p| PathBuf::from(p.to_string()))
+    }
+
+    fn bookmark(url: &NSURL) -> Option<Vec<u8>> {
+        url.bookmarkDataWithOptions_includingResourceValuesForKeys_relativeToURL_error(
+            NSURLBookmarkCreationOptions::empty(),
+            None,
+            None,
+        )
+        .ok()
+        .map(|d| d.to_vec())
+    }
+
+    /// Starts access for a file:// URL and returns the path to use for it.
+    /// Returns None for anything that does not need it.
+    pub fn access(p: &str) -> Option<PathBuf> {
+        if !p.starts_with("file://") {
+            return None;
+        }
+        let mut open = OPEN.lock().ok()?;
+        let open = open.get_or_insert_with(HashMap::new);
+        if let Some(path) = open.get(p) {
+            return Some(path.clone());
+        }
+        // Inside the app's own container no permission is needed.
+        let url: Retained<NSURL> = NSURL::URLWithString(&NSString::from_str(p))?;
+        let mut path = path_of(&url)?;
+        let home = std::env::var("HOME").unwrap_or_default();
+        if !home.is_empty() && path.starts_with(&home) {
+            open.insert(p.to_string(), path.clone());
+            return Some(path);
+        }
+
+        // Granted in this run (just picked, or handed over by the Files app)?
+        let mut ok = unsafe { url.startAccessingSecurityScopedResource() };
+        if ok {
+            if let Some(b) = bookmark(&url) {
+                store(p, b);
+            }
+        } else if let Some(data) = load().get(p) {
+            // Picked in an earlier run: resolve the saved bookmark.
+            let data = NSData::with_bytes(data);
+            let mut stale = Bool::NO;
+            if let Ok(resolved) = unsafe {
+                NSURL::URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error(
+                    &data,
+                    NSURLBookmarkResolutionOptions::empty(),
+                    None,
+                    &mut stale,
+                )
+            } {
+                ok = unsafe { resolved.startAccessingSecurityScopedResource() };
+                if ok {
+                    if let Some(rp) = path_of(&resolved) {
+                        path = rp;
+                    }
+                    if stale.as_bool() {
+                        if let Some(b) = bookmark(&resolved) {
+                            store(p, b);
+                        }
+                    }
+                }
+            }
+        }
+        // Access stays open for the rest of the run (the URL is not stopped).
+        if ok {
+            open.insert(p.to_string(), path.clone());
+        }
+        Some(path)
+    }
+}
+
+/// Creates a new board in the app's Documents folder (shown in the Files app
+/// as "On My iPhone › Project MD") and returns its path.
+#[tauri::command]
+fn create_board(app: AppHandle, name: String) -> Result<String, String> {
+    let dir = app.path().document_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let clean: String = name
+        .trim()
+        .trim_end_matches(".md")
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':') { '-' } else { c })
+        .collect();
+    let base = if clean.trim().is_empty() { "Board".to_string() } else { clean.trim().to_string() };
+    let mut path = dir.join(format!("{base}.md"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{base} {n}.md"));
+        n += 1;
+    }
+    std::fs::write(&path, "## To do\n\n## Doing\n\n## Done\n").map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// On phones, boards live in the app's Documents folder (visible in the Files
@@ -245,6 +382,10 @@ pub fn run() {
                 .filter(|a| !a.starts_with('-'))
                 .collect();
             request_open(app.handle(), args);
+            #[cfg(target_os = "ios")]
+            if let Ok(d) = app.path().app_data_dir() {
+                scoped::init(d);
+            }
             #[cfg(mobile)]
             open_documents_folder(app.handle());
             #[cfg(desktop)]
@@ -256,13 +397,22 @@ pub fn run() {
             write_file,
             watch_file,
             unwatch_file,
-            take_pending_opens
+            take_pending_opens,
+            create_board
         ])
         .build(tauri::generate_context!())
         .expect("error while building Project MD")
         .run(|_app, _event| {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             if let tauri::RunEvent::Opened { urls } = _event {
+                // iOS: keep the URL so security-scoped access can be requested.
+                #[cfg(target_os = "ios")]
+                let paths = urls
+                    .into_iter()
+                    .filter(|u| u.scheme() == "file")
+                    .map(|u| u.to_string())
+                    .collect();
+                #[cfg(not(target_os = "ios"))]
                 let paths = urls
                     .into_iter()
                     .filter_map(|u| u.to_file_path().ok())

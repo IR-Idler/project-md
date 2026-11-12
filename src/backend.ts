@@ -5,6 +5,17 @@ import { listen } from "@tauri-apps/api/event";
 
 export const isNative = "__TAURI_INTERNALS__" in window;
 
+/** iPhone / iPad (iPadOS reports itself as a Mac with touch). */
+export const isIOS =
+  isNative &&
+  (/iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+
+/** iOS: make a new board in the app's Documents folder; returns its path. */
+export function createBoard(name: string): Promise<string> {
+  return invoke<string>("create_board", { name });
+}
+
 const demo = new Map<string, string>([
   [
     "/demo/hello.md",

@@ -8,17 +8,37 @@
   <body>
     <div id="app">
       <header id="topbar" data-tauri-drag-region>
+        <div id="switch-wrap" class="phone-only">
+          <button id="board-switch" aria-haspopup="menu" title="Boards">
+            <span id="board-name">Project MD</span>
+            <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" /></svg>
+          </button>
+          <div id="board-pop" class="menu-pop" hidden></div>
+        </div>
         <div id="tabs"></div>
-        <button id="add-files" class="btn" title="Open Markdown files (⌘O)">Add files</button>
+        <div id="add-wrap">
+          <button id="add-btn" class="btn" title="New board or open a file" aria-label="New board or open a file">+</button>
+          <div id="add-pop" class="menu-pop" hidden>
+            <button id="add-new" class="menu-item">New board…<span class="menu-key">⌘N</span></button>
+            <button id="add-open" class="menu-item">Open file…<span class="menu-key">⌘O</span></button>
+          </div>
+        </div>
         <div class="spacer" data-tauri-drag-region></div>
+        <button id="search-toggle" class="icon-btn phone-only" title="Search" aria-label="Search">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
+        </button>
         <div id="filter-wrap">
-          <button id="filter-btn" class="btn" title="Filter by color or urgency">Filter</button>
+          <button id="filter-btn" class="btn" title="Filter by color or urgency" aria-label="Filter">
+            <svg class="phone-only" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 10h8M8.5 15h3" /></svg>
+            <span class="btn-label">Filter</span>
+          </button>
           <div id="filter-pop" hidden></div>
         </div>
         <div id="search-wrap">
           <input id="search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" />
           <button id="search-clear" title="Clear search" hidden>×</button>
         </div>
+        <button id="search-cancel" class="phone-only" type="button">Cancel</button>
       </header>
       <main id="board" hidden></main>
       <div id="empty">

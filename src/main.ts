@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { highlight, renderNotes } from "./markdown";
-import { isNative, onFileChanged, onMenu, onOpenRequest, readFile, unwatchFile, watchFile, writeFile } from "./backend";
+import { createBoard, isIOS, isNative, onFileChanged, onMenu, onOpenRequest, readFile, unwatchFile, watchFile, writeFile } from "./backend";
 import {
   Board,
   Card,
@@ -230,7 +230,15 @@ const inInput = () => {
 // ---------------------------------------------------------------- helpers
 
 function baseName(p: string) {
-  return (p.split(/[\\/]/).pop() || p).replace(MD_EXT, "");
+  let name = p.split(/[\\/]/).pop() || p;
+  if (p.startsWith("file://")) {
+    try {
+      name = decodeURIComponent(name);
+    } catch {
+      /* keep as is */
+    }
+  }
+  return name.replace(MD_EXT, "");
 }
 
 function findCard(b: Board, id: string | null) {
@@ -391,16 +399,91 @@ async function addFiles() {
   const res = await openDialog({
     multiple: true,
     filters: [{ name: "Markdown", extensions: ["md", "markdown", "txt"] }],
+    canCreateDirectories: true,
+    // iOS: edit the file where it is (iCloud Drive etc.), not a copy.
+    fileAccessMode: "scoped",
   });
   if (!res) return;
   for (const p of Array.isArray(res) ? res : [res]) await openPath(p);
 }
 
+/** Small in-app sheet asking for a board name. Resolves null on cancel. */
+function askBoardName(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const back = el("div", "sheet-backdrop");
+    const form = el("form", "sheet") as HTMLFormElement;
+    const label = el("label", "sheet-label");
+    label.textContent = "New board";
+    const input = el("input", "sheet-input") as HTMLInputElement;
+    input.type = "text";
+    input.value = "Board";
+    input.placeholder = "Board name";
+    input.spellcheck = false;
+    input.autocapitalize = "words";
+    input.setAttribute("enterkeyhint", "done");
+    const row = el("div", "sheet-actions");
+    const cancel = el("button", "btn") as HTMLButtonElement;
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    const ok = el("button", "btn primary") as HTMLButtonElement;
+    ok.type = "submit";
+    ok.textContent = "Create";
+    row.append(cancel, ok);
+    const hint = el("p", "sheet-hint");
+    hint.textContent = isIOS ? "Saved in Files › On My iPhone › Project MD" : "";
+    form.append(label, input, hint, row);
+    back.append(form);
+    document.body.append(back);
+    const done = (v: string | null) => {
+      back.remove();
+      resolve(v);
+    };
+    cancel.addEventListener("click", () => done(null));
+    back.addEventListener("pointerdown", (e) => {
+      if (e.target === back) done(null);
+    });
+    form.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        done(null);
+      }
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      done(input.value.trim() || "Board");
+    });
+    input.focus();
+    input.select();
+  });
+}
+
 async function newBoard() {
-  if (!isNative) return;
+  if (isIOS) {
+    // iOS has no "save as" panel that leaves a file we can keep writing to,
+    // so boards are created in the app's own Documents folder.
+    const name = await askBoardName();
+    if (name == null) return;
+    try {
+      await openPath(await createBoard(name));
+    } catch (e) {
+      alertError(`Could not create the board: ${e}`);
+    }
+    return;
+  }
+  if (!isNative) {
+    // Browser preview: make an in-memory board.
+    let n = 1;
+    while (tabs.some((t) => t.path === `/demo/Board ${n}.md`)) n++;
+    const path = `/demo/Board ${n}.md`;
+    await writeFile(path, "## To do\n\n## Doing\n\n## Done\n");
+    await openPath(path);
+    return;
+  }
   const p = await saveDialog({
+    title: "New board",
     defaultPath: "Board.md",
     filters: [{ name: "Markdown", extensions: ["md"] }],
+    canCreateDirectories: true,
   });
   if (!p) return;
   const path = MD_EXT.test(p) ? p : p + ".md";
@@ -511,6 +594,15 @@ function renderTabs() {
       return d;
     }),
   );
+  renderSwitcher();
+  // Keep the active tab visible when the bar scrolls (narrow screens).
+  const a = tabsEl.children[active] as HTMLElement | undefined;
+  if (a) {
+    const left = a.offsetLeft - tabsEl.offsetLeft;
+    if (left < tabsEl.scrollLeft) tabsEl.scrollLeft = left;
+    else if (left + a.offsetWidth > tabsEl.scrollLeft + tabsEl.clientWidth)
+      tabsEl.scrollLeft = left + a.offsetWidth - tabsEl.clientWidth;
+  }
 }
 
 /** Drag a tab sideways to reorder it. */
@@ -1396,6 +1488,81 @@ searchClear.addEventListener("click", () => {
   searchEl.focus();
 });
 
+// Phone: search opens over the header from a small icon.
+const topbarEl = $("#topbar");
+function openSearch() {
+  topbarEl.classList.add("searching");
+  searchEl.focus();
+  searchEl.select();
+}
+function closeSearch() {
+  searchEl.value = "";
+  setQuery("");
+  searchEl.blur();
+  topbarEl.classList.remove("searching");
+}
+$("#search-toggle").addEventListener("click", openSearch);
+$("#search-cancel").addEventListener("click", closeSearch);
+searchEl.addEventListener("blur", () => {
+  // Keep the field showing while a search is filtering the board.
+  if (!searchEl.value) topbarEl.classList.remove("searching");
+});
+
+// ---------------------------------------------------------------- board switcher (phone)
+
+const switchBtn = $("#board-switch");
+const boardPop = $("#board-pop");
+const boardNameEl = $("#board-name");
+
+function renderSwitcher() {
+  boardNameEl.textContent = cur()?.name ?? "Project MD";
+  if (boardPop.hidden) return;
+  const items: HTMLElement[] = tabs.map((t, i) => {
+    const b = el("button", "menu-item" + (i === active ? " active" : ""));
+    const mark = el("span", "menu-check");
+    mark.textContent = i === active ? "✓" : "";
+    const name = el("span", "menu-name");
+    name.textContent = t.name;
+    const x = el("span", "menu-close");
+    x.textContent = "×";
+    x.title = "Close board";
+    x.setAttribute("role", "button");
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeTab(i);
+    });
+    b.append(mark, name, x);
+    b.addEventListener("click", () => {
+      boardPop.hidden = true;
+      if (i !== active) switchTab(i);
+    });
+    return b;
+  });
+  if (items.length) items.push(el("div", "menu-sep"));
+  const mk = (label: string, fn: () => void) => {
+    const b = el("button", "menu-item");
+    const pad = el("span", "menu-check");
+    const name = el("span", "menu-name");
+    name.textContent = label;
+    b.append(pad, name);
+    b.addEventListener("click", () => {
+      boardPop.hidden = true;
+      fn();
+    });
+    return b;
+  };
+  items.push(mk("New board…", newBoard), mk("Open file…", addFiles));
+  boardPop.replaceChildren(...items);
+}
+
+switchBtn.addEventListener("click", () => {
+  boardPop.hidden = !boardPop.hidden;
+  renderSwitcher();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!boardPop.hidden && !(e.target as HTMLElement).closest("#switch-wrap")) boardPop.hidden = true;
+});
+
 // ---------------------------------------------------------------- filter
 
 const filterBtn = $("#filter-btn");
@@ -1489,8 +1656,7 @@ function runAction(id: string) {
       break;
     case "find":
       if (modal) break;
-      searchEl.focus();
-      searchEl.select();
+      openSearch();
       break;
     case "zoom-in":
       setZoom(zoom + 0.1);
@@ -1573,11 +1739,10 @@ window.addEventListener("keydown", (e) => {
   }
 
   if (e.key === "Escape") {
-    if (!filterPop.hidden) filterPop.hidden = true;
-    else if (query) {
-      searchEl.value = "";
-      setQuery("");
-    } else select(null);
+    if (!boardPop.hidden) boardPop.hidden = true;
+    else if (!filterPop.hidden) filterPop.hidden = true;
+    else if (query) closeSearch();
+    else select(null);
     return;
   }
 
@@ -1609,7 +1774,30 @@ window.addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- top bar & startup
 
-$("#add-files").addEventListener("click", addFiles);
+const addPop = $("#add-pop");
+$("#add-btn").addEventListener("click", () => {
+  addPop.hidden = !addPop.hidden;
+  if (addPop.hidden) return;
+  // Keep the menu on screen when the button sits near the right edge.
+  addPop.style.left = "";
+  const r = addPop.getBoundingClientRect();
+  const over = r.right - (window.innerWidth - 8);
+  if (over > 0) addPop.style.left = -over + "px";
+});
+$("#add-new").addEventListener("click", () => {
+  addPop.hidden = true;
+  newBoard();
+});
+$("#add-open").addEventListener("click", () => {
+  addPop.hidden = true;
+  addFiles();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!addPop.hidden && !(e.target as HTMLElement).closest("#add-wrap")) addPop.hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !addPop.hidden) addPop.hidden = true;
+});
 $("#empty-open").addEventListener("click", addFiles);
 $("#empty-new").addEventListener("click", newBoard);
 
@@ -1639,7 +1827,15 @@ if (isNative) {
   render(true);
   persist();
   onOpenRequest(async (ps) => {
-    for (const p of ps) await openPath(p);
+    // One file (Finder / Files "Open With") is brought to the front. A batch
+    // (iOS opens every board in its Documents folder at launch) keeps the
+    // board that was showing.
+    const focus = ps.length === 1 || !tabs.length;
+    for (const p of ps) await openPath(p, false);
+    if (focus) {
+      const i = tabs.findIndex((t) => t.path === ps[ps.length - 1]);
+      if (i >= 0) switchTab(i);
+    }
   });
 })();
 

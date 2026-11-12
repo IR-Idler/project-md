@@ -2803,6 +2803,8 @@ name = "project-md"
 version = "0.1.0"
 dependencies = [
  "notify",
+ "objc2",
+ "objc2-foundation",
  "serde",
  "serde_json",
  "tauri",
