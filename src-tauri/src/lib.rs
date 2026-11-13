@@ -373,6 +373,9 @@ pub fn run() {
     // Remember the window's size and position between launches.
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    // Taptic feedback while dragging cards on iPhone/iPad.
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_haptics::init());
     builder
         .manage(Shared::default())
         .manage(PendingOpens::default())

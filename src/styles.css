@@ -537,10 +537,49 @@ textarea {
   z-index: 1000;
   margin: 0;
   pointer-events: none;
-  transform: rotate(1.5deg);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
-  opacity: 0.96;
+  transform: rotate(1.5deg) scale(1.04);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1);
+  opacity: 0.97;
   overflow: hidden;
+  animation: ghost-lift 0.16s ease-out;
+}
+@keyframes ghost-lift {
+  from {
+    transform: rotate(0) scale(1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* The list a dragged card would land in. */
+.column.drop-target {
+  box-shadow: var(--panel-shadow), 0 0 0 2px color-mix(in srgb, var(--sel) 35%, transparent);
+  transition: box-shadow 0.12s ease;
+}
+/* The spot it would land on grows in when it appears. */
+.placeholder {
+  animation: ph-in 0.14s ease-out;
+}
+@keyframes ph-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.6);
+  }
+}
+/* A card or list that was just dropped settles into place. */
+.dropped {
+  animation: settle 0.28s cubic-bezier(0.3, 1.5, 0.6, 1);
+}
+@keyframes settle {
+  from {
+    transform: scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ghost,
+  .placeholder,
+  .dropped {
+    animation: none;
+  }
 }
 body.dragging,
 body.dragging * {
@@ -1033,9 +1072,9 @@ mark {
 }
 
 .card.lifting {
-  transform: scale(1.03);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transform: scale(1.04);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s cubic-bezier(0.3, 1.4, 0.6, 1), box-shadow 0.15s ease;
 }
 
 /* ---------------------------------------------------------------- phone layout

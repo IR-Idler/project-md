@@ -11,6 +11,19 @@ export const isIOS =
   (/iPhone|iPad|iPod/.test(navigator.userAgent) ||
     (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 
+/**
+ * Taptic feedback on iPhone/iPad (no-op elsewhere): "lift" when a card is
+ * picked up, "tick" when its drop spot moves, "drop" when it lands.
+ */
+export function haptic(kind: "lift" | "tick" | "drop") {
+  if (!isIOS) return;
+  import("@tauri-apps/plugin-haptics")
+    .then((h) =>
+      kind === "tick" ? h.selectionFeedback() : h.impactFeedback(kind === "lift" ? "medium" : "light"),
+    )
+    .catch(() => {});
+}
+
 /** iOS: make a new board in the app's Documents folder; returns its path. */
 export function createBoard(name: string): Promise<string> {
   return invoke<string>("create_board", { name });

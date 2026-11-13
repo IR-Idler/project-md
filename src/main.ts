@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { highlight, renderNotes } from "./markdown";
-import { createBoard, isIOS, isNative, onFileChanged, onMenu, onOpenRequest, readFile, unwatchFile, watchFile, writeFile } from "./backend";
+import { createBoard, haptic, isIOS, isNative, onFileChanged, onMenu, onOpenRequest, readFile, unwatchFile, watchFile, writeFile } from "./backend";
 import {
   Board,
   Card,
@@ -1193,7 +1193,7 @@ function beginPress(e: PointerEvent, kind: Press["kind"], target: HTMLElement) {
       if (!press) return;
       press.armed = true;
       press.el.classList.add("lifting");
-      navigator.vibrate?.(10);
+      haptic("lift");
     }, 350);
   }
   window.addEventListener("pointermove", onPointerMove);
@@ -1300,6 +1300,7 @@ function moveDrag(x: number, y: number) {
       };
       col = cols.reduce((best, c) => (dist(c) < dist(best) ? c : best));
     }
+    markTarget(col);
     const list = col.querySelector<HTMLElement>(".cards")!;
     const items = [...list.children].filter((c) => c.classList.contains("card") && c !== drag!.el);
     const before = items.find((it) => {
@@ -1307,9 +1308,13 @@ function moveDrag(x: number, y: number) {
       return y < r.top + r.height / 2;
     });
     if (before) {
-      if (drag.ph.nextElementSibling !== before) list.insertBefore(drag.ph, before);
+      if (drag.ph.nextElementSibling !== before) {
+        list.insertBefore(drag.ph, before);
+        tick();
+      }
     } else if (list.lastElementChild !== drag.ph) {
       list.append(drag.ph);
+      tick();
     }
   } else {
     const vertical = isVertical();
@@ -1318,8 +1323,26 @@ function moveDrag(x: number, y: number) {
       return vertical ? y < r.top + r.height / 2 : x < r.left + r.width / 2;
     });
     const anchor = before ?? boardEl.querySelector(".add-list");
-    if (anchor && drag.ph.nextElementSibling !== anchor) boardEl.insertBefore(drag.ph, anchor);
+    if (anchor && drag.ph.nextElementSibling !== anchor) {
+      boardEl.insertBefore(drag.ph, anchor);
+      tick();
+    }
   }
+}
+
+/** Highlight the list a card would land in. */
+function markTarget(col: HTMLElement | null) {
+  for (const c of boardEl.querySelectorAll(".column.drop-target")) if (c !== col) c.classList.remove("drop-target");
+  col?.classList.add("drop-target");
+}
+
+/** A light haptic tick each time the drop spot moves (rate-limited). */
+let lastTick = 0;
+function tick() {
+  const now = performance.now();
+  if (now - lastTick < 70) return;
+  lastTick = now;
+  haptic("tick");
 }
 
 function autoScroll() {
@@ -1384,6 +1407,15 @@ function endDrag(cancel: boolean) {
     }
     moveList(d.id, index);
   }
+  haptic("drop");
+  // Let the card or list that just landed settle into place.
+  requestAnimationFrame(() => {
+    const sel = d.kind === "card" ? `.card[data-card="${d.id}"]` : `.column[data-list="${d.id}"]`;
+    const landed = boardEl.querySelector<HTMLElement>(sel);
+    if (!landed) return;
+    landed.classList.add("dropped");
+    landed.addEventListener("animationend", () => landed.classList.remove("dropped"), { once: true });
+  });
 }
 
 // ---------------------------------------------------------------- board events
