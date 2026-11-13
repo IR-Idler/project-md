@@ -1,9 +1,11 @@
 :root {
-  --bg: #f4f4f3;
-  --top: #e9e9e7;
-  --tab-hover: #e0e0de;
-  --col: #e2e2e0;
-  --card: #ffffff;
+  --bg: #f1f2ef;
+  --top: #e8e9e5;
+  --tab-hover: #dfe0dc;
+  --col: #ffffff; /* list panel */
+  --card: #ffffff; /* editor, menus */
+  --card-row: #f4f5f2; /* uncolored card inside a panel */
+  --panel-shadow: 0 1px 2px rgba(30, 35, 25, 0.05), 0 0 0 1px rgba(30, 35, 25, 0.04);
   --text: #222222;
   --muted: #8b8b88;
   --line: #d5d5d2;
@@ -17,17 +19,19 @@
   --c3: #30a46c;
   --c4: #0090ff;
   --c5: #8e4ec6;
-  --tint: 17%;
+  --tint: 21%;
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1b1d;
-    --top: #242426;
-    --tab-hover: #2c2c2f;
-    --col: #29292c;
-    --card: #353538;
+    --bg: #161618;
+    --top: #202022;
+    --tab-hover: #29292c;
+    --col: #222225;
+    --card: #2f2f33;
+    --card-row: #2c2c30;
+    --panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
     --text: #e9e9e7;
     --muted: #8e8e93;
     --line: #38383b;
@@ -35,7 +39,7 @@
     --dim: #3a3a3e;
     --input: #1b1b1d;
     --shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
-    --tint: 26%;
+    --tint: 30%;
   }
 }
 
@@ -229,8 +233,8 @@ textarea {
   min-height: 0;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -242,13 +246,15 @@ textarea {
   display: flex;
   flex-direction: column;
   background: var(--col);
-  border-radius: 6px;
+  border-radius: 14px;
+  box-shadow: var(--panel-shadow);
+  padding: 2px 4px 0;
 }
 
 .col-head {
   display: flex;
   align-items: center;
-  padding: 8px 6px 6px;
+  padding: 9px 6px 7px;
   font-weight: 700;
   font-size: 1.08em;
   cursor: grab;
@@ -351,19 +357,18 @@ textarea {
 .cards {
   min-height: 4px;
   overflow-y: auto;
-  padding: 0 4px;
+  padding: 0 2px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .card {
   flex: none;
   position: relative;
-  padding: 6px 10px;
-  background: var(--card);
-  border-radius: 3px;
-  box-shadow: var(--shadow);
+  padding: 8px 11px;
+  background: var(--card-row);
+  border-radius: 9px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -486,8 +491,8 @@ textarea {
   border: 0;
   background: none;
   color: var(--muted);
-  padding: 8px 0 10px;
-  border-radius: 0 0 6px 6px;
+  padding: 9px 0 11px;
+  border-radius: 0 0 14px 14px;
 }
 @media (hover: hover) {
   .add-card:hover {
@@ -500,7 +505,7 @@ textarea {
   width: calc(270px * var(--z, 1));
   height: 40px;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: 14px;
   background: none;
   color: var(--muted);
 }
@@ -515,14 +520,14 @@ textarea {
 
 .placeholder {
   flex: none;
-  border-radius: 3px;
+  border-radius: 9px;
   background: color-mix(in srgb, var(--text) 7%, transparent);
   border: 1px dashed color-mix(in srgb, var(--text) 25%, transparent);
 }
 .col-placeholder {
   flex: none;
   width: calc(270px * var(--z, 1));
-  border-radius: 6px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--text) 5%, transparent);
   border: 1px dashed color-mix(in srgb, var(--text) 25%, transparent);
 }
