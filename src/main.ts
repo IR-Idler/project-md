@@ -867,6 +867,9 @@ function startRename(listId: string) {
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      // Otherwise the window's Enter shortcut opens the selected card once the
+      // input is gone.
+      e.stopPropagation();
       finish(true);
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -1019,7 +1022,12 @@ function openModal(tab: Tab, card: Card, before = serialize(tab.board), isNew = 
   renderUrgency();
   backdrop.hidden = false;
   if (isNew || !card.title) mTitle.focus();
-  else {
+  else if (lastPointerType === "touch") {
+    // On a phone, opening a card is mostly for reading: don't cover half the
+    // screen with the keyboard. Tapping the notes starts editing.
+    (document.activeElement as HTMLElement | null)?.blur();
+    mBody.scrollTop = 0;
+  } else {
     mBody.focus();
     mBody.setSelectionRange(mBody.value.length, mBody.value.length);
     mBody.scrollTop = mBody.scrollHeight;
@@ -1130,8 +1138,17 @@ $("#m-done").addEventListener("click", () => closeModal());
 const vv = window.visualViewport;
 if (vv) {
   const fit = () => {
-    document.documentElement.style.setProperty("--vvh", vv.height + "px");
-    document.documentElement.style.setProperty("--vvt", vv.offsetTop + "px");
+    const root = document.documentElement;
+    root.style.setProperty("--vvh", vv.height + "px");
+    root.style.setProperty("--vvt", vv.offsetTop + "px");
+    // On-screen keyboard: the app shrinks to the visible area (see styles.css),
+    // so keep a field being edited on the board in view above the keyboard.
+    const kb = window.innerHeight - vv.height > 80;
+    root.classList.toggle("kb-open", kb);
+    const a = document.activeElement as HTMLElement | null;
+    if (kb && a && boardEl.contains(a)) {
+      requestAnimationFrame(() => a.scrollIntoView({ block: "nearest" }));
+    }
   };
   vv.addEventListener("resize", fit);
   vv.addEventListener("scroll", fit);

@@ -123,8 +123,10 @@ textarea {
   color: var(--muted);
   border-right: 1px solid transparent;
 }
-.tab:hover {
-  background: var(--tab-hover);
+@media (hover: hover) {
+  .tab:hover {
+    background: var(--tab-hover);
+  }
 }
 .tab.active {
   background: var(--bg);
@@ -145,13 +147,19 @@ textarea {
   opacity: 0.5;
   line-height: 18px;
 }
-.tab:hover .tab-close,
 .tab.active .tab-close {
   opacity: 1;
 }
-.tab-close:hover {
-  background: var(--line);
-  color: var(--text);
+@media (hover: hover) {
+  .tab:hover .tab-close {
+    opacity: 1;
+  }
+}
+@media (hover: hover) {
+  .tab-close:hover {
+    background: var(--line);
+    color: var(--text);
+  }
 }
 
 .btn {
@@ -163,12 +171,16 @@ textarea {
   background: var(--input);
   white-space: nowrap;
 }
-.btn:hover {
-  border-color: var(--muted);
+@media (hover: hover) {
+  .btn:hover {
+    border-color: var(--muted);
+  }
 }
-.btn.danger:hover {
-  border-color: var(--c0);
-  color: var(--c0);
+@media (hover: hover) {
+  .btn.danger:hover {
+    border-color: var(--c0);
+    color: var(--c0);
+  }
 }
 
 .spacer {
@@ -203,8 +215,10 @@ textarea {
   color: var(--muted);
   padding: 0;
 }
-#search-clear:hover {
-  color: var(--text);
+@media (hover: hover) {
+  #search-clear:hover {
+    color: var(--text);
+  }
 }
 
 /* ---------------------------------------------------------------- board */
@@ -475,8 +489,10 @@ textarea {
   padding: 8px 0 10px;
   border-radius: 0 0 6px 6px;
 }
-.add-card:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .add-card:hover {
+    color: var(--text);
+  }
 }
 
 .add-list {
@@ -488,9 +504,11 @@ textarea {
   background: none;
   color: var(--muted);
 }
-.add-list:hover {
-  color: var(--text);
-  border-color: var(--muted);
+@media (hover: hover) {
+  .add-list:hover {
+    color: var(--text);
+    border-color: var(--muted);
+  }
 }
 
 /* ---------------------------------------------------------------- drag & drop */
@@ -722,13 +740,17 @@ body.dragging * {
   background: none;
   color: var(--muted);
 }
-.quiet:hover {
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  color: var(--text);
+@media (hover: hover) {
+  .quiet:hover {
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    color: var(--text);
+  }
 }
-.quiet.danger:hover {
-  background: color-mix(in srgb, var(--c0) 12%, transparent);
-  color: var(--c0);
+@media (hover: hover) {
+  .quiet.danger:hover {
+    background: color-mix(in srgb, var(--c0) 12%, transparent);
+    color: var(--c0);
+  }
 }
 .btn.primary {
   border-color: var(--sel);
@@ -736,8 +758,10 @@ body.dragging * {
   color: var(--bg);
   padding: 0 16px;
 }
-.btn.primary:hover {
-  opacity: 0.88;
+@media (hover: hover) {
+  .btn.primary:hover {
+    opacity: 0.88;
+  }
 }
 .swatch {
   width: 16px;
@@ -867,8 +891,10 @@ mark {
   text-align: left;
   white-space: nowrap;
 }
-.menu-item:hover {
-  background: var(--input);
+@media (hover: hover) {
+  .menu-item:hover {
+    background: var(--input);
+  }
 }
 .menu-item.active {
   font-weight: 700;
@@ -1188,11 +1214,45 @@ mark {
     height: 48px;
   }
 
+  /* While the on-screen keyboard is up, the app fits the visible area so the
+     board can scroll a field being edited into view above the keyboard. */
+  .kb-open #app {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--vvt, 0);
+    height: var(--vvh, 100%);
+  }
+
   #modal-backdrop {
     inset: auto 0 auto 0;
     top: var(--vvt, 0);
     height: var(--vvh, 100%);
-    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+    /* Keep Done/Delete clear of the home indicator (hidden while typing). */
+    padding: calc(8px + env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+  }
+  .kb-open #modal-backdrop {
+    padding-bottom: 8px;
+  }
+
+  /* Finger-sized list buttons; the fold arrow's margin keeps the title centered. */
+  .col-fold {
+    width: 32px;
+    height: 32px;
+    margin-right: 60px;
+  }
+  .col-sort,
+  .col-del {
+    width: 36px;
+    height: 32px;
+    font-size: 14px;
+  }
+  #filter-pop .filter-row {
+    gap: 10px;
+  }
+  #filter-pop .swatch {
+    width: 30px;
+    height: 30px;
   }
   #modal {
     height: 100%;
