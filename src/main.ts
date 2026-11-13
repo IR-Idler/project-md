@@ -1135,6 +1135,12 @@ $("#m-delete").addEventListener("click", () => closeModal(true));
 $("#m-done").addEventListener("click", () => closeModal());
 
 // Keep the card editor above the on-screen keyboard on phones.
+// It's an app, not a web page: no pinch-zoom on iPhone/iPad (the viewport
+// meta tag covers most cases; WebKit's gesture events catch the rest).
+for (const type of ["gesturestart", "gesturechange"]) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+
 const vv = window.visualViewport;
 if (vv) {
   const fit = () => {
