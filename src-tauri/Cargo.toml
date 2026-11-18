@@ -1,6 +1,6 @@
 [package]
 name = "project-md"
-version = "0.1.0"
+version = "0.1.1"
 description = "Minimal Kanban boards stored as Markdown files"
 edition = "2021"
 
