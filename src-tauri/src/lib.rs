@@ -43,16 +43,19 @@ fn request_open(app: &AppHandle, paths: Vec<String>) {
 fn to_path(p: &str) -> PathBuf {
     #[cfg(target_os = "ios")]
     if let Some(path) = scoped::access(p) {
-        return path;
+        return relocate(path);
     }
+    let mut path = PathBuf::from(p);
     if p.starts_with("file://") {
         if let Ok(u) = tauri::Url::parse(p) {
-            if let Ok(path) = u.to_file_path() {
-                return path;
+            if let Ok(fp) = u.to_file_path() {
+                path = fp;
             }
         }
     }
-    PathBuf::from(p)
+    #[cfg(mobile)]
+    let path = relocate(path);
+    path
 }
 
 fn canon(p: &Path) -> PathBuf {
@@ -269,32 +272,26 @@ fn create_board(app: AppHandle, name: String) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
-/// On phones, boards live in the app's Documents folder (visible in the Files
-/// app). Open every board there, and create a starter board on first launch.
+/// The app's Documents folder on phones. Its absolute path can change when the
+/// app is updated or reinstalled, so saved paths inside an older copy of it are
+/// mapped onto the current one.
 #[cfg(mobile)]
-fn open_documents_folder(app: &AppHandle) {
-    let Ok(dir) = app.path().document_dir() else { return };
-    let _ = std::fs::create_dir_all(&dir);
-    let list = |dir: &Path| -> Vec<String> {
-        let mut v: Vec<String> = std::fs::read_dir(dir)
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .map(|e| e.path())
-                    .filter(|p| p.extension().is_some_and(|x| x == "md" || x == "markdown"))
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .collect()
-            })
-            .unwrap_or_default();
-        v.sort();
-        v
-    };
-    let mut boards = list(&dir);
-    if boards.is_empty() {
-        let welcome = dir.join("Welcome.md");
-        let _ = std::fs::write(&welcome, include_str!("../../example/hello.md"));
-        boards = list(&dir);
+static DOC_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+#[cfg(mobile)]
+fn relocate(p: PathBuf) -> PathBuf {
+    if p.exists() {
+        return p;
     }
-    request_open(app, boards);
+    let Some(doc) = DOC_DIR.get() else { return p };
+    let s = p.to_string_lossy();
+    match s.find("/Documents/") {
+        Some(i) => {
+            let moved = doc.join(&s[i + "/Documents/".len()..]);
+            if moved.exists() { moved } else { p }
+        }
+        None => p,
+    }
 }
 
 /// Native menu bar. Items send their id to the UI, which runs the action.
@@ -390,7 +387,10 @@ pub fn run() {
                 scoped::init(d);
             }
             #[cfg(mobile)]
-            open_documents_folder(app.handle());
+            if let Ok(d) = app.path().document_dir() {
+                let _ = std::fs::create_dir_all(&d);
+                let _ = DOC_DIR.set(d);
+            }
             #[cfg(desktop)]
             build_menu(app)?;
             Ok(())
