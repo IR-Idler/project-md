@@ -46,8 +46,26 @@ jobs:
 
       - run: npm ci
 
+      # The notarization key has to be a file on disk.
+      - name: Write the App Store Connect API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey.p8"
+
       # One .dmg that runs on both Apple silicon and Intel Macs.
-      - run: npx tauri build --target universal-apple-darwin --bundles dmg
+      # Signed with the Developer ID certificate and notarized by Apple,
+      # so it opens without a Gatekeeper warning.
+      - name: Build, sign and notarize
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "Developer ID Application: Erik Gundermann (PYSRU834C2)"
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/keys/AuthKey.p8
+        run: npx tauri build --target universal-apple-darwin --bundles dmg
 
       - name: Rename the download
         run: |

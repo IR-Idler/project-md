@@ -10,17 +10,11 @@ Markdown file, so your boards work on any device and in any editor.
 | Platform | |
 | --- | --- |
 | **macOS** (Apple silicon & Intel) | [Download Project-MD-macOS.dmg](https://github.com/IR-Idler/project-md/releases/latest/download/Project-MD-macOS.dmg) · [all releases](https://github.com/IR-Idler/project-md/releases) |
-| **iPhone & iPad** | TestFlight coming soon |
+| **iPhone & iPad** | [Join the TestFlight beta](https://testflight.apple.com/join/BHt86z9U) |
 | **Windows** | Coming later |
 
-**First launch on a Mac:** the app isn't notarized by Apple yet. Open the `.dmg`,
-drag Project MD to Applications, then if macOS blocks it go to
-*System Settings → Privacy & Security* and click *Open Anyway*. If macOS says the
-app is damaged, run this once in Terminal:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Project MD.app"
-```
+**Install on a Mac:** open the `.dmg` and drag Project MD to Applications. The app
+is signed and notarized by Apple, so it opens without a warning.
 
 ## Board format
 

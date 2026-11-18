@@ -2,7 +2,7 @@
 name: Project MD
 tagline: Lightweight Kanban board where every board is a plain Markdown file
 status: beta
-platform: macOS, iOS (soon)
+platform: macOS, iOS (TestFlight beta)
 logo: src-tauri/icons/icon.png
 website: https://ir-idler.github.io/project-md/
 github: https://github.com/IR-Idler/project-md
@@ -21,8 +21,8 @@ fonts:
 A Kanban board for one-person teams. Lists are `##` headings, cards are `###` headings, so boards work in any editor and on any device. Built with Tauri.
 
 ## Current state
-- macOS download available on GitHub Releases (not notarized yet)
-- iPhone and iPad: TestFlight coming soon
+- macOS download available on GitHub Releases (signed and notarized)
+- iPhone and iPad: TestFlight beta (https://testflight.apple.com/join/BHt86z9U)
 - Windows: later
 
 ## Design language
