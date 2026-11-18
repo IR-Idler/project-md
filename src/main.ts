@@ -18,6 +18,7 @@ import {
   toggleCheck,
   uid,
 } from "./parser";
+import { NoteEditor } from "./noteEditor";
 import "./styles.css";
 
 // ---------------------------------------------------------------- state
@@ -174,35 +175,9 @@ const searchEl = $<HTMLInputElement>("#search");
 const searchClear = $("#search-clear");
 const backdrop = $("#modal-backdrop");
 const mTitle = $<HTMLInputElement>("#m-title");
-const mBody = $<HTMLTextAreaElement>("#m-body");
+const mBody = new NoteEditor($<HTMLDivElement>("#m-body"));
 const mColors = $("#m-colors");
 const mUrgency = $("#m-urgency");
-const mMirror = $("#m-mirror");
-
-/** Redraw the layer over the notes field: same text, checklist markers as boxes. */
-function syncMirror() {
-  const frag = document.createDocumentFragment();
-  const lines = mBody.value.split("\n");
-  lines.forEach((line, i) => {
-    const m = line.match(/^(\s*)([-*+] \[([ xX])\])( ?)(.*)$/);
-    if (m) {
-      const done = m[3] !== " ";
-      const box = el("span", "cb" + (done ? " on" : ""));
-      box.textContent = m[2];
-      const rest = el("span", done ? "cb-done" : "");
-      rest.textContent = m[5];
-      frag.append(m[1], box, m[4], rest);
-    } else {
-      frag.append(line);
-    }
-    if (i < lines.length - 1) frag.append("\n");
-  });
-  // A trailing newline needs something after it to take up a line.
-  frag.append("\u200b");
-  mMirror.replaceChildren(frag);
-  mMirror.scrollTop = mBody.scrollTop;
-}
-
 const isApple = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /** Urgency shortcut: Ctrl+0-3 on Apple devices, Alt+0-3 elsewhere (Ctrl is the command key there). */
@@ -224,7 +199,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = ""): HTMLElemen
 
 const inInput = () => {
   const a = document.activeElement;
-  return a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement;
+  return a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a === mBody.el;
 };
 
 // ---------------------------------------------------------------- helpers
@@ -324,22 +299,60 @@ function restore(t: Tab, text: string) {
   }
 }
 
-function undo() {
+function undo(): boolean {
   const t = cur();
-  if (!t || !t.undo.length) return;
+  if (!t || !t.undo.length) return false;
   t.redo.push(serialize(t.board));
   restore(t, t.undo.pop()!);
   scheduleSave(t);
   render();
+  return true;
 }
 
-function redo() {
+function redo(): boolean {
   const t = cur();
-  if (!t || !t.redo.length) return;
+  if (!t || !t.redo.length) return false;
   t.undo.push(serialize(t.board));
   restore(t, t.redo.pop()!);
   scheduleSave(t);
   render();
+  return true;
+}
+
+/** A short message at the bottom of the screen, with an optional action. */
+let toastTimer = 0;
+function toast(text: string, action?: { label: string; run: () => void }) {
+  let box = document.querySelector<HTMLElement>("#toast");
+  if (!box) {
+    box = el("div");
+    box.id = "toast";
+    box.setAttribute("role", "status");
+    document.body.append(box);
+  }
+  box.replaceChildren(text);
+  if (action) {
+    const b = el("button");
+    b.textContent = action.label;
+    b.addEventListener("click", () => {
+      hide();
+      action.run();
+    });
+    box.append(b);
+  }
+  box.classList.add("show");
+  clearTimeout(toastTimer);
+  const hide = () => box!.classList.remove("show");
+  toastTimer = window.setTimeout(hide, 2600);
+}
+
+/** Phone: double-tap empty space on the board to undo (with a Redo button). */
+function touchUndo() {
+  if (undo()) {
+    haptic("drop");
+    toast("Undone", { label: "Redo", run: () => redo() && haptic("drop") });
+  } else {
+    toast("Nothing to undo");
+  }
 }
 
 // ---------------------------------------------------------------- files & tabs
@@ -531,7 +544,6 @@ async function reloadFromDisk(t: Tab) {
       if (!m.dirty) {
         mTitle.value = target.title;
         mBody.value = target.body;
-        syncMirror();
         renderSwatches();
         renderUrgency();
       }
@@ -968,14 +980,7 @@ function renderUrgency() {
 
 // ---- checklist helpers for the notes field
 
-function insertText(text: string) {
-  // execCommand keeps the field's own undo history; fall back if unavailable.
-  const ok = text ? document.execCommand("insertText", false, text) : document.execCommand("delete");
-  if (!ok) {
-    mBody.setRangeText(text, mBody.selectionStart, mBody.selectionEnd, "end");
-    mBody.dispatchEvent(new Event("input"));
-  }
-}
+const insertText = (text: string) => mBody.insertText(text);
 
 function currentLine() {
   const v = mBody.value;
@@ -1017,7 +1022,6 @@ function openModal(tab: Tab, card: Card, before = serialize(tab.board), isNew = 
   };
   mTitle.value = card.title;
   mBody.value = card.body;
-  syncMirror();
   renderSwatches();
   renderUrgency();
   backdrop.hidden = false;
@@ -1072,56 +1076,23 @@ mTitle.addEventListener("input", () => {
   modal.card.title = mTitle.value.replace(/[\r\n]+/g, " ");
   scheduleSave(modal.tab, 500);
 });
-mBody.addEventListener("input", () => {
+mBody.oninput = () => {
   if (!modal) return;
-  syncMirror();
   modal.dirty = true;
   modal.card.body = mBody.value;
   scheduleSave(modal.tab, 500);
-});
+};
 mTitle.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
     e.preventDefault();
     mBody.focus();
   }
 });
-mBody.addEventListener("keydown", (e) => {
+mBody.el.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "l" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     insertChecklistItem();
-    return;
   }
-  // Enter continues a checklist / bullet list; Enter on an empty item ends it.
-  if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.isComposing) return;
-  if (mBody.selectionStart !== mBody.selectionEnd) return;
-  const l = currentLine();
-  const m = mBody.value.slice(l.start, l.pos).match(/^(\s*)([-*+]) (\[[ xX]\] ?)?(.*)$/);
-  if (!m) return;
-  e.preventDefault();
-  if (!m[4].trim()) {
-    mBody.setSelectionRange(l.start, l.pos);
-    insertText("");
-  } else {
-    insertText("\n" + m[1] + m[2] + " " + (m[3] ? "[ ] " : ""));
-  }
-});
-mBody.addEventListener("scroll", () => {
-  mMirror.scrollTop = mBody.scrollTop;
-});
-// Clicking a checklist box ticks it: the click puts the caret inside the
-// "- [ ]" marker, which is otherwise never a useful place to type.
-mBody.addEventListener("click", () => {
-  if (mBody.selectionStart !== mBody.selectionEnd) return;
-  const l = currentLine();
-  const m = l.text.match(CHECK_RE);
-  if (!m) return;
-  const marker = l.start + m[1].length;
-  if (l.pos < marker || l.pos > marker + 5) return;
-  mBody.setSelectionRange(marker + 3, marker + 4);
-  insertText(m[2] === " " ? "x" : " ");
-  const end = mBody.value.indexOf("\n", marker);
-  const at = end < 0 ? mBody.value.length : end;
-  mBody.setSelectionRange(at, at);
 });
 // Keep the caret in the notes when the button is pressed.
 $("#m-check").addEventListener("pointerdown", (e) => e.preventDefault());
@@ -1441,6 +1412,24 @@ boardEl.addEventListener("pointerdown", (e) => {
   select(null);
 });
 
+// Double-tap on empty board space (not a card, button or field) = undo.
+let lastTap = { t: 0, x: 0, y: 0 };
+boardEl.addEventListener("pointerup", (e) => {
+  if (e.pointerType !== "touch" || drag) return;
+  const target = e.target as HTMLElement;
+  if (target.closest(".card, button, input, a, .col-title, .placeholder")) {
+    lastTap.t = 0;
+    return;
+  }
+  const now = performance.now();
+  if (now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+    lastTap.t = 0;
+    touchUndo();
+  } else {
+    lastTap = { t: now, x: e.clientX, y: e.clientY };
+  }
+});
+
 boardEl.addEventListener("dblclick", (e) => {
   const target = e.target as HTMLElement;
   if (target.closest("button")) return;
@@ -1705,7 +1694,8 @@ function runAction(id: string) {
     case "undo":
     case "redo":
       // In a text field, undo typing; otherwise undo the last board change.
-      if (inInput()) document.execCommand(id);
+      if (document.activeElement === mBody.el) id === "undo" ? mBody.undo() : mBody.redo();
+      else if (inInput()) document.execCommand(id);
       else if (id === "undo") undo();
       else redo();
       break;
@@ -1883,8 +1873,7 @@ if (isNative) {
   persist();
   onOpenRequest(async (ps) => {
     // One file (Finder / Files "Open With") is brought to the front. A batch
-    // (iOS opens every board in its Documents folder at launch) keeps the
-    // board that was showing.
+    // (several files at once) keeps the board that was showing.
     const focus = ps.length === 1 || !tabs.length;
     for (const p of ps) await openPath(p, false);
     if (focus) {

@@ -642,83 +642,96 @@ body.dragging * {
   font-weight: 700;
   outline: none;
 }
-/* The notes field is a plain textarea with its text made invisible; an
-   identical layer on top draws the same text, with checklist markers shown
-   as boxes. Typing, selection and the caret all stay native. */
+/* The notes field: one line per <div> (see noteEditor.ts). Checklist lines
+   draw a box in place of "- [ ]" and hang their text, so wrapped lines line
+   up under the item text, not under the box. */
 #m-edit {
   flex: 1;
   min-height: 0;
   position: relative;
 }
-#m-body,
-#m-mirror {
+#m-body {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
   padding: 14px 18px;
-  border: 0;
-  font: inherit;
-  line-height: 1.6;
-  letter-spacing: 0;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
-  tab-size: 4;
-}
-#m-body {
-  background: transparent;
-  resize: none;
-  outline: none;
   overflow-y: auto;
   scrollbar-width: none;
+  outline: none;
   color: var(--text);
-  -webkit-text-fill-color: transparent;
   caret-color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
 }
 #m-body::-webkit-scrollbar {
   display: none;
 }
-#m-body::placeholder {
-  -webkit-text-fill-color: var(--muted);
-  opacity: 0.7;
-}
-#m-mirror {
-  overflow: hidden;
-  pointer-events: none;
-  color: var(--text);
-}
-.cb {
-  position: relative;
-  -webkit-text-fill-color: transparent;
-}
-.cb::before {
-  content: "";
+#m-body.is-empty::before {
+  content: attr(data-placeholder);
   position: absolute;
-  left: calc(4.5ch - 14px);
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  margin-top: -8px;
+  color: var(--muted);
+  opacity: 0.7;
+  pointer-events: none;
+}
+#m-body .ln.item {
+  --box: 14px;
+  --gap: 8px;
+  position: relative;
+  padding-left: calc(var(--indent, 0) * 0.6em + var(--box) + var(--gap));
+}
+#m-body .cb {
+  position: absolute;
+  left: calc(var(--indent, 0) * 0.6em);
+  /* centered on the first line of the item */
+  top: calc(0.8em - var(--box) / 2);
+  width: var(--box);
+  height: var(--box);
   box-sizing: border-box;
   border: 1.5px solid var(--muted);
   border-radius: 3px;
   background: var(--card);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.cb.on::before {
-  content: "✓";
+/* Finger-sized tap targets over the boxes, outside the editable field. */
+.cb-hits {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cb-hit {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+#m-body .ln.item.on {
+  text-decoration: line-through;
+  color: color-mix(in srgb, var(--text) 50%, transparent);
+}
+#m-body .ln.item.on .cb {
   border-color: var(--c3);
   background: var(--c3);
-  -webkit-text-fill-color: #fff;
+}
+#m-body .ln.item.on .cb::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  color: #fff;
   font-size: 10px;
   font-weight: 700;
   line-height: 11px;
   text-align: center;
-}
-.cb-done {
-  text-decoration: line-through;
-  opacity: 0.5;
+  text-decoration: none;
 }
 
 #m-foot {
@@ -1303,7 +1316,6 @@ mark {
   }
   #m-title,
   #m-body,
-  #m-mirror,
   .col-input {
     font-size: 16px;
   }
@@ -1322,4 +1334,42 @@ mark {
   #m-foot .quiet {
     height: 32px;
   }
+}
+
+/* ---------------------------------------------------------------- toast */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 999px;
+  background: var(--sel);
+  color: var(--bg);
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+#toast:not(:has(button)) {
+  padding-right: 16px;
+}
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+#toast button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
+  color: inherit;
+  font-weight: 700;
 }
