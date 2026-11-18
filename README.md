@@ -54,6 +54,8 @@ Text below the card     -> the card's notes
 - ⌘F search (matches are highlighted) · Filter button: by color and urgency
 - ⌘+ / ⌘− / ⌘0 zoom · ⌘O open files · ⌘N new board · ⌘W close tab · ⌘1–9 switch tabs
 - Drag tabs to reorder them
+- ⌘, (or the gear button; on iPhone the board menu) opens Settings (light / dark / system appearance)
+- The Mac app checks GitHub Releases once a day and offers new versions (Project MD → Check for Updates… checks now)
 - Drop `.md` files on the window, or use Finder's "Open With → Project MD"
 
 Changes are saved to the file immediately; edits made in other apps (or synced

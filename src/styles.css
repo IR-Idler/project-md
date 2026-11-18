@@ -22,9 +22,16 @@
   --tint: 21%;
   color-scheme: light dark;
 }
+/* Settings › Appearance: data-theme on <html> overrides the system. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #161618;
     --top: #202022;
     --tab-hover: #29292c;
@@ -41,6 +48,23 @@
     --shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
     --tint: 30%;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #161618;
+  --top: #202022;
+  --tab-hover: #29292c;
+  --col: #222225;
+  --card: #2f2f33;
+  --card-row: #2c2c30;
+  --panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --text: #e9e9e7;
+  --muted: #8e8e93;
+  --line: #38383b;
+  --sel: #e9e9e7;
+  --dim: #3a3a3e;
+  --input: #1b1b1d;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  --tint: 30%;
 }
 
 * {
@@ -1046,6 +1070,219 @@ mark {
   height: 30px;
 }
 
+/* ---------------------------------------------------------------- settings */
+
+#settings-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  padding: 0;
+  color: var(--muted);
+}
+#settings-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+#settings-page {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.set-bar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(40px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+}
+.set-bar h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+#settings-done {
+  position: absolute;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: 7px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-weight: 700;
+}
+@media (hover: hover) {
+  #settings-done:hover {
+    background: var(--tab-hover);
+  }
+}
+.set-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+}
+.set-section {
+  max-width: 480px;
+  margin: 0 auto;
+}
+.set-section h2 {
+  margin: 0 0 8px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.set-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--col);
+  box-shadow: var(--panel-shadow);
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.set-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--col);
+  box-shadow: var(--panel-shadow);
+}
+.set-intro p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.intro-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+.bwl-mark {
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+.bwl-ring {
+  stroke: #dadada;
+}
+.bwl-horizon {
+  stroke: #111111;
+}
+:root[data-theme="dark"] .bwl-ring {
+  stroke: #4a5268;
+}
+:root[data-theme="dark"] .bwl-horizon {
+  stroke: #f6efe2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bwl-ring {
+    stroke: #4a5268;
+  }
+  :root:not([data-theme="light"]) .bwl-horizon {
+    stroke: #f6efe2;
+  }
+}
+.intro-app {
+  font-weight: 700;
+}
+.intro-by {
+  color: var(--muted);
+}
+.intro-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.intro-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: #ffb800;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.set-section + .set-section {
+  margin-top: 28px;
+}
+.set-value {
+  color: var(--muted);
+}
+.set-static {
+  cursor: default;
+}
+@media (hover: hover) {
+  .set-row.set-static:hover {
+    background: none;
+  }
+}
+.set-row:focus:not(:focus-visible) {
+  outline: none;
+}
+.set-row + .set-row {
+  box-shadow: inset 0 1px 0 var(--line);
+}
+@media (hover: hover) {
+  .set-row:hover {
+    background: var(--card-row);
+  }
+}
+.set-check {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  visibility: hidden;
+}
+.set-row.on .set-check {
+  visibility: visible;
+}
+@media (max-width: 700px) {
+  .set-bar {
+    height: calc(46px + env(safe-area-inset-top));
+  }
+  .set-bar h1,
+  .set-row,
+  #settings-done {
+    font-size: 15px;
+  }
+  #settings-done {
+    bottom: 5px;
+    height: 36px;
+  }
+  .set-row {
+    min-height: 46px;
+  }
+}
+
 /* ---------------------------------------------------------------- filter */
 
 #filter-wrap {
@@ -1110,6 +1347,7 @@ mark {
   }
   #tabs,
   #add-wrap,
+  #settings-btn,
   .btn-label {
     display: none !important;
   }
@@ -1333,6 +1571,44 @@ mark {
   #m-foot .btn,
   #m-foot .quiet {
     height: 32px;
+  }
+}
+
+/* ---------------------------------------------------------------- update notice */
+
+.update-note {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 190;
+  width: min(300px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  animation: update-in 0.2s ease;
+}
+.update-note p {
+  margin: 0;
+}
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+@keyframes update-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-note {
+    animation: none;
   }
 }
 

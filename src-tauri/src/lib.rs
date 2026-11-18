@@ -308,6 +308,9 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
 
     let app_menu = SubmenuBuilder::new(app, "Project MD")
         .about(None)
+        .item(&item("check-updates", "Check for Updates…", None)?)
+        .separator()
+        .item(&item("settings", "Settings…", Some("CmdOrCtrl+,"))?)
         .separator()
         .services()
         .separator()

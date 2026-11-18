@@ -19,6 +19,8 @@ import {
   uid,
 } from "./parser";
 import { NoteEditor } from "./noteEditor";
+import { openSettings } from "./settings";
+import { checkForUpdates } from "./updates";
 import "./styles.css";
 
 // ---------------------------------------------------------------- state
@@ -126,6 +128,10 @@ function setZoom(z: number) {
   } catch {
     /* view state only */
   }
+}
+function showSettings() {
+  if (modal) return;
+  openSettings();
 }
 try {
   setZoom(parseFloat(localStorage.getItem(ZOOM_KEY) || "1") || 1);
@@ -1596,6 +1602,7 @@ function renderSwitcher() {
     return b;
   };
   items.push(mk("New board…", newBoard), mk("Open file…", addFiles));
+  items.push(el("div", "menu-sep"), mk("Settings…", showSettings));
   boardPop.replaceChildren(...items);
 }
 
@@ -1721,6 +1728,12 @@ function runAction(id: string) {
     case "clear-filter":
       clearFilter();
       break;
+    case "settings":
+      showSettings();
+      break;
+    case "check-updates":
+      checkForUpdates(true);
+      break;
   }
 }
 onMenu(runAction);
@@ -1750,6 +1763,7 @@ window.addEventListener("keydown", (e) => {
       : k === "=" || k === "+" ? "zoom-in"
       : k === "-" ? "zoom-out"
       : k === "0" ? "zoom-reset"
+      : k === "," ? "settings"
       : null;
     if (action) {
       e.preventDefault();
@@ -1843,6 +1857,7 @@ document.addEventListener("pointerdown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !addPop.hidden) addPop.hidden = true;
 });
+$("#settings-btn").addEventListener("click", showSettings);
 $("#empty-open").addEventListener("click", addFiles);
 $("#empty-new").addEventListener("click", newBoard);
 
@@ -1871,6 +1886,8 @@ if (isNative) {
   if (tabs.length) active = Math.min(Math.max(session?.active ?? 0, 0), tabs.length - 1);
   render(true);
   persist();
+  // Mac app: look for a newer release (at most once a day), after startup.
+  if (isNative) setTimeout(() => checkForUpdates(), 3000);
   onOpenRequest(async (ps) => {
     // One file (Finder / Files "Open With") is brought to the front. A batch
     // (several files at once) keeps the board that was showing.
