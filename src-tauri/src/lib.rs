@@ -55,7 +55,15 @@ fn to_path(p: &str) -> PathBuf {
     }
     #[cfg(mobile)]
     let path = relocate(path);
+    #[cfg(all(target_os = "macos", feature = "app-store"))]
+    let path = scoped::access_path(&path).unwrap_or(path);
     path
+}
+
+/// True in the Mac App Store build, which leaves updates to the App Store.
+#[tauri::command]
+fn app_store_build() -> bool {
+    cfg!(feature = "app-store")
 }
 
 fn canon(p: &Path) -> PathBuf {
@@ -69,7 +77,12 @@ fn read_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 fn write_file(path: String, contents: String) -> Result<(), String> {
-    std::fs::write(to_path(&path), contents).map_err(|e| e.to_string())
+    std::fs::write(to_path(&path), contents).map_err(|e| e.to_string())?;
+    // Mac App Store: a board just made with the save panel only exists now,
+    // so its bookmark can only be kept after this first write.
+    #[cfg(all(target_os = "macos", feature = "app-store"))]
+    to_path(&path);
+    Ok(())
 }
 
 #[tauri::command]
@@ -139,11 +152,13 @@ fn unwatch_file(state: State<Shared>, path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// iOS: files picked outside the app (iCloud Drive, other apps' folders) can
-/// only be read and written after asking for security-scoped access. A
-/// bookmark is kept for each one so it can be reopened after a relaunch.
-#[cfg(target_os = "ios")]
+/// iOS and the sandboxed Mac App Store build: files picked outside the app
+/// (iCloud Drive, other apps' folders, anywhere on a Mac) can only be read and
+/// written after asking for security-scoped access. A bookmark is kept for
+/// each one so it can be reopened after a relaunch.
+#[cfg(any(target_os = "ios", all(target_os = "macos", feature = "app-store")))]
 mod scoped {
+    #[cfg(target_os = "ios")]
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2_foundation::{NSData, NSString, NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions, NSURL};
@@ -180,9 +195,14 @@ mod scoped {
         url.path().map(|p| PathBuf::from(p.to_string()))
     }
 
+    #[cfg(target_os = "ios")]
+    const CREATE: NSURLBookmarkCreationOptions = NSURLBookmarkCreationOptions::empty();
+    #[cfg(target_os = "macos")]
+    const CREATE: NSURLBookmarkCreationOptions = NSURLBookmarkCreationOptions::WithSecurityScope;
+
     fn bookmark(url: &NSURL) -> Option<Vec<u8>> {
         url.bookmarkDataWithOptions_includingResourceValuesForKeys_relativeToURL_error(
-            NSURLBookmarkCreationOptions::empty(),
+            CREATE,
             None,
             None,
         )
@@ -190,8 +210,55 @@ mod scoped {
         .map(|d| d.to_vec())
     }
 
+    /// Mac App Store build. Files the user picked, dropped on the window or
+    /// opened from Finder are accessible for the rest of this run: keep a
+    /// bookmark for them. Files from an earlier run (tabs reopened at launch)
+    /// are reached through that bookmark. Returns the path to use, or None
+    /// when there is no access (yet), e.g. a board not written yet.
+    #[cfg(target_os = "macos")]
+    pub fn access_path(path: &std::path::Path) -> Option<PathBuf> {
+        let key = path.to_string_lossy().into_owned();
+        let mut open = OPEN.lock().ok()?;
+        let open = open.get_or_insert_with(HashMap::new);
+        if let Some(path) = open.get(&key) {
+            return Some(path.clone());
+        }
+        let url = NSURL::fileURLWithPath(&NSString::from_str(&key));
+        // A bookmark can only be made while the file is accessible.
+        if let Some(b) = bookmark(&url) {
+            store(&key, b);
+            open.insert(key, path.to_path_buf());
+            return Some(path.to_path_buf());
+        }
+        let data = NSData::with_bytes(load().get(&key)?);
+        let mut stale = Bool::NO;
+        let resolved = unsafe {
+            NSURL::URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error(
+                &data,
+                NSURLBookmarkResolutionOptions::WithSecurityScope
+                    | NSURLBookmarkResolutionOptions::WithoutUI,
+                None,
+                &mut stale,
+            )
+        }
+        .ok()?;
+        // Access stays open for the rest of the run (the URL is not stopped).
+        if !unsafe { resolved.startAccessingSecurityScopedResource() } {
+            return None;
+        }
+        let rp = path_of(&resolved).unwrap_or_else(|| path.to_path_buf());
+        if stale.as_bool() {
+            if let Some(b) = bookmark(&resolved) {
+                store(&key, b);
+            }
+        }
+        open.insert(key, rp.clone());
+        Some(rp)
+    }
+
     /// Starts access for a file:// URL and returns the path to use for it.
     /// Returns None for anything that does not need it.
+    #[cfg(target_os = "ios")]
     pub fn access(p: &str) -> Option<PathBuf> {
         if !p.starts_with("file://") {
             return None;
@@ -306,10 +373,15 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         b.build(app)
     };
 
-    let app_menu = SubmenuBuilder::new(app, "Project MD")
-        .about(None)
+    let app_menu = SubmenuBuilder::new(app, "Project MD").about(None);
+    // The App Store version is updated by the App Store.
+    #[cfg(not(feature = "app-store"))]
+    let app_menu = app_menu
         .item(&item("check-updates", "Check for Updates…", None)?)
-        .separator()
+        .separator();
+    #[cfg(feature = "app-store")]
+    let app_menu = app_menu.separator();
+    let app_menu = app_menu
         .item(&item("settings", "Settings…", Some("CmdOrCtrl+,"))?)
         .separator()
         .services()
@@ -385,7 +457,7 @@ pub fn run() {
                 .filter(|a| !a.starts_with('-'))
                 .collect();
             request_open(app.handle(), args);
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", all(target_os = "macos", feature = "app-store")))]
             if let Ok(d) = app.path().app_data_dir() {
                 scoped::init(d);
             }
@@ -404,7 +476,8 @@ pub fn run() {
             watch_file,
             unwatch_file,
             take_pending_opens,
-            create_board
+            create_board,
+            app_store_build
         ])
         .build(tauri::generate_context!())
         .expect("error while building Project MD")

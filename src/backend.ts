@@ -24,6 +24,11 @@ export function haptic(kind: "lift" | "tick" | "drop") {
     .catch(() => {});
 }
 
+/** The Mac App Store build, which leaves updates to the App Store. */
+export const isAppStoreBuild: Promise<boolean> = isNative
+  ? invoke<boolean>("app_store_build").catch(() => false)
+  : Promise.resolve(false);
+
 /** iOS: make a new board in the app's Documents folder; returns its path. */
 export function createBoard(name: string): Promise<string> {
   return invoke<string>("create_board", { name });

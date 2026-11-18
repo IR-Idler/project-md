@@ -2,7 +2,7 @@
 // To add a setting: add it to `Settings`, apply it in `apply()`, and add a
 // section to #settings-page in index.html.
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isIOS, isNative } from "./backend";
+import { isAppStoreBuild, isIOS, isNative } from "./backend";
 import { currentVersion, findUpdate, open as openLink } from "./updates";
 
 type Theme = "system" | "light" | "dark";
@@ -99,12 +99,16 @@ currentVersion().then((v) => {
   page.querySelector("#app-version")!.textContent = isNative ? v : "dev";
 });
 
-// The Mac app checks GitHub; on iPhone and iPad the App Store handles updates.
+// The GitHub Mac app checks GitHub; on iPhone, iPad and the Mac App Store
+// version the App Store handles updates.
 const updateRow = page.querySelector<HTMLButtonElement>("#check-updates")!;
 const updateLabel = page.querySelector<HTMLElement>("#update-label")!;
 const updateStatus = page.querySelector<HTMLElement>("#update-status")!;
 let updateUrl = "";
 if (isIOS) updateRow.hidden = true;
+isAppStoreBuild.then((store) => {
+  if (store) updateRow.hidden = true;
+});
 // Keyboard shortcuts are for the Mac.
 if (isIOS) for (const s of page.querySelectorAll<HTMLElement>(".shortcuts-section")) s.hidden = true;
 updateRow.addEventListener("click", async () => {

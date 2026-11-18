@@ -1,10 +1,10 @@
-// Update notice for the Mac app, which is downloaded from GitHub Releases
-// (the App Store handles updates on iPhone and iPad). Once a day the app asks
+// Update notice for the Mac app downloaded from GitHub Releases (the App
+// Store handles updates on iPhone, iPad and for the Mac App Store version). Once a day the app asks
 // GitHub for the latest release; if it is newer, a small card offers the
 // download. The user installs it themselves.
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { isIOS, isNative } from "./backend";
+import { isAppStoreBuild, isIOS, isNative } from "./backend";
 
 const LATEST_URL = "https://api.github.com/repos/IR-Idler/project-md/releases/latest";
 const RELEASES_PAGE = "https://github.com/IR-Idler/project-md/releases/latest";
@@ -88,7 +88,7 @@ export async function findUpdate(): Promise<Release | null> {
  * and stays silent unless there is an update.
  */
 export async function checkForUpdates(manual = false) {
-  if (isIOS) return;
+  if (isIOS || (await isAppStoreBuild)) return;
   if (!manual) {
     let last = 0;
     try {

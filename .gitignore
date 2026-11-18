@@ -3,3 +3,6 @@ dist
 src-tauri/target
 src-tauri/gen/schemas
 .DS_Store
+
+# Mac App Store provisioning profile (download from developer.apple.com)
+src-tauri/appstore/embedded.provisionprofile

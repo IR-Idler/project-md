@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Required for the Mac App Store. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Boards the user opens, drops on the window or creates with the save panel. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Reopen last session's boards after a relaunch. -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<!-- The web view needs it to load the app's own pages in the sandbox. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.application-identifier</key>
+	<string>PYSRU834C2.com.projectmd.board</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>PYSRU834C2</string>
+</dict>
+</plist>

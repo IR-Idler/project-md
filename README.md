@@ -83,3 +83,35 @@ git tag v0.2.0 && git push origin v0.2.0
 GitHub Actions ([release.yml](.github/workflows/release.yml)) builds a universal
 macOS `.dmg` and attaches it to the release as `Project-MD-macOS.dmg`.
 The website lives in [`docs/`](docs/) and is served by GitHub Pages from `main`.
+
+## Mac App Store
+
+The Mac App Store version is the same app built with the `app-store` feature
+and [`tauri.appstore.conf.json`](src-tauri/tauri.appstore.conf.json). It differs
+from the GitHub download in two ways:
+
+- It runs in Apple's sandbox ([entitlements](src-tauri/appstore/Entitlements.plist)).
+  It can only open boards the user picked, dropped on the window or opened from
+  Finder, and keeps a security-scoped bookmark for each so they reopen after a relaunch.
+- It has no GitHub update check (no menu item, no Settings row): the App Store updates it.
+
+**One-time setup** at developer.apple.com and App Store Connect:
+
+1. Certificates → create **Apple Distribution** and **Mac Installer Distribution**,
+   download both and double-click them to add them to the keychain.
+2. Identifiers → `com.projectmd.board` (already exists for iOS) → make sure macOS is allowed.
+3. Profiles → new **Mac App Store Connect** profile for `com.projectmd.board` with the
+   Apple Distribution certificate. Save it as `src-tauri/appstore/embedded.provisionprofile`
+   (git ignores it).
+4. App Store Connect → Project MD → add the **macOS** platform. The Mac version
+   shares the iPhone app's listing; it needs its own Mac screenshots (e.g. 2880×1800).
+
+**Each release:**
+
+```bash
+scripts/build-mac-app-store.sh 1
+```
+
+The number is the build number and must go up with every upload. The script
+prints the path of a signed `.pkg`: drag it into Apple's Transporter app to
+upload, then pick the build in App Store Connect and submit it for review.
