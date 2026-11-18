@@ -792,6 +792,14 @@ function addCard(listId: string) {
   openModal(t, card, before, true);
 }
 
+/** New card at the end of the selected card's list (or the first list). */
+function addCardHere() {
+  const t = cur();
+  if (!t || modal) return;
+  const list = findCard(t.board, selected)?.list ?? t.board.lists[0];
+  if (list) addCard(list.id);
+}
+
 function addList() {
   const l: List = { id: uid(), title: "New list", body: "", cards: [] };
   mutate((b) => b.lists.push(l));
@@ -1808,6 +1816,12 @@ window.addEventListener("keydown", (e) => {
   if (e.key.startsWith("Arrow")) {
     e.preventDefault();
     navigate(e.key, e.altKey);
+    return;
+  }
+
+  if (e.key.toLowerCase() === "n" && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    addCardHere();
     return;
   }
 

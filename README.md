@@ -43,6 +43,7 @@ Text below the card     -> the card's notes
   Keyboard Shortcuts → Mission Control)
 - Checklists: in a card press ⌘L or "☐ Checklist"; Enter adds the next item. Tick items on the expanded card
 - Notes show **bold**, *italic*, `code`, bullets and clickable links
+- `N` adds a card to the selected card's list (or the first list)
 - Arrow keys move the selection, ⌥ + arrows move the card
 - Backspace deletes the selected card · ⌘Z / ⇧⌘Z undo / redo
 

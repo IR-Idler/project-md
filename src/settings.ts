@@ -105,6 +105,8 @@ const updateLabel = page.querySelector<HTMLElement>("#update-label")!;
 const updateStatus = page.querySelector<HTMLElement>("#update-status")!;
 let updateUrl = "";
 if (isIOS) updateRow.hidden = true;
+// Keyboard shortcuts are for the Mac.
+if (isIOS) for (const s of page.querySelectorAll<HTMLElement>(".shortcuts-section")) s.hidden = true;
 updateRow.addEventListener("click", async () => {
   if (updateUrl) {
     openLink(updateUrl);

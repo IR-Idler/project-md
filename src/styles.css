@@ -1241,6 +1241,13 @@ mark {
     background: none;
   }
 }
+.set-row kbd {
+  flex: none;
+  margin-left: 12px;
+  color: var(--muted);
+  font: inherit;
+  white-space: nowrap;
+}
 .set-row:focus:not(:focus-visible) {
   outline: none;
 }
